@@ -12,6 +12,7 @@ from .serializers import CitaReadSerializer, CitaCreateSerializer, BloqueoAgenda
 from profesionales.models import HorarioDisponible
 from catalogos.models import Servicio
 
+
 class CitaViewSet(viewsets.ModelViewSet):
     queryset = Cita.objects.all().order_by('-fecha_hora_inicio')
     permission_classes = [AllowAny]
@@ -26,6 +27,7 @@ class CitaViewSet(viewsets.ModelViewSet):
         cliente_id = self.request.query_params.get('cliente')
         profesional_id = self.request.query_params.get('profesional')
         estado = self.request.query_params.get('estado')
+        fecha = self.request.query_params.get('fecha')  # <-- Soporte filtro fecha YYYY-MM-DD
 
         if cliente_id:
             queryset = queryset.filter(id_cliente_id=cliente_id)
@@ -33,20 +35,41 @@ class CitaViewSet(viewsets.ModelViewSet):
             queryset = queryset.filter(id_profesional_id=profesional_id)
         if estado:
             queryset = queryset.filter(estado=estado)
+        if fecha:
+            try:
+                fecha_obj = datetime.strptime(fecha, "%Y-%m-%d").date()
+                queryset = queryset.filter(fecha_hora_inicio__date=fecha_obj)
+            except ValueError:
+                pass
+
         return queryset
 
     def create(self, request, *args, **kwargs):
-        # Envolver la creación en una transacción atómica
         with transaction.atomic():
             serializer = self.get_serializer(data=request.data)
             serializer.is_valid(raise_exception=True)
             cita = serializer.save()
             
-            # Devolver la representación enriquecida
             read_serializer = CitaReadSerializer(cita)
             return Response(read_serializer.data, status=status.HTTP_201_CREATED)
 
-    @action(detail=True, methods=['post'], url_path='cancelar')
+    @action(detail=True, methods=['post', 'patch'], url_path='confirmar')
+    def confirmar_cita(self, request, pk=None):
+        """Marca la cita como CONFIRMADA por el profesional."""
+        cita = self.get_object()
+        cita.estado = 'CONFIRMADA'
+        cita.save()
+        return Response({"mensaje": f"Cita #{cita.id_cita} confirmada exitosamente.", "estado": cita.estado}, status=status.HTTP_200_OK)
+
+    @action(detail=True, methods=['post', 'patch'], url_path='completar')
+    def completar_cita(self, request, pk=None):
+        """Marca la cita como COMPLETADA / FINALIZADA."""
+        cita = self.get_object()
+        cita.estado = 'COMPLETADA'
+        cita.save()
+        return Response({"mensaje": f"Cita #{cita.id_cita} completada.", "estado": cita.estado}, status=status.HTTP_200_OK)
+
+    @action(detail=True, methods=['post', 'patch'], url_path='cancelar')
     def cancelar_cita(self, request, pk=None):
         """Cancela la cita liberando el slot para otros usuarios."""
         cita = self.get_object()
@@ -55,15 +78,7 @@ class CitaViewSet(viewsets.ModelViewSet):
         
         cita.estado = 'CANCELADA'
         cita.save()
-        return Response({"mensaje": f"Cita #{cita.id_cita} cancelada exitosamente.", "estado": cita.estado})
-
-    @action(detail=True, methods=['post'], url_path='completar')
-    def completar_cita(self, request, pk=None):
-        """Marca la cita como atendida/completada."""
-        cita = self.get_object()
-        cita.estado = 'COMPLETADA'
-        cita.save()
-        return Response({"mensaje": f"Cita #{cita.id_cita} marcada como completada.", "estado": cita.estado})
+        return Response({"mensaje": f"Cita #{cita.id_cita} cancelada exitosamente.", "estado": cita.estado}, status=status.HTTP_200_OK)
 
 
 class BloqueoAgendaViewSet(viewsets.ModelViewSet):

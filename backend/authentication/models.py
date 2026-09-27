@@ -28,6 +28,29 @@ class UsuarioManager(BaseUserManager):
         user.save(using=self._db)
         return user
 
+    def create_superuser(self, correo, password=None, **extra_fields):
+        extra_fields.setdefault('is_staff', True)
+        extra_fields.setdefault('is_superuser', True)
+        extra_fields.setdefault('activo', True)
+
+        if extra_fields.get('is_staff') is not True:
+            raise ValueError('El superusuario debe tener is_staff=True.')
+        if extra_fields.get('is_superuser') is not True:
+            raise ValueError('El superusuario debe tener is_superuser=True.')
+
+        nombre = extra_fields.pop('nombre', 'Admin')
+        apellido = extra_fields.pop('apellido', 'Sistema')
+        id_rol = extra_fields.pop('id_rol', 1)  # Rol 1: ADMINISTRADOR
+
+        return self.create_user(
+            correo=correo,
+            nombre=nombre,
+            apellido=apellido,
+            password=password,
+            id_rol=id_rol,
+            **extra_fields
+        )
+
 
 class Usuario(AbstractBaseUser):
     id_usuario = models.BigAutoField(primary_key=True)
@@ -41,6 +64,10 @@ class Usuario(AbstractBaseUser):
     fecha_creacion = models.DateTimeField(auto_now_add=True)
     last_login = models.DateTimeField(null=True, blank=True)
 
+    # Campos requeridos por el sistema de autenticación y admin
+    is_staff = models.BooleanField(default=False)
+    is_superuser = models.BooleanField(default=False)
+
     objects = UsuarioManager()
 
     USERNAME_FIELD = 'correo'
@@ -49,6 +76,9 @@ class Usuario(AbstractBaseUser):
     class Meta:
         db_table = 'usuario'
         managed = False
+
+    def __str__(self):
+        return f"{self.nombre} {self.apellido} ({self.correo})"
 
     @property
     def id(self):
@@ -65,3 +95,10 @@ class Usuario(AbstractBaseUser):
     @property
     def is_authenticated(self):
         return True
+
+    # Métodos que Django Admin exige para evaluar permisos
+    def has_perm(self, perm, obj=None):
+        return self.is_superuser
+
+    def has_module_perms(self, app_label):
+        return self.is_superuser

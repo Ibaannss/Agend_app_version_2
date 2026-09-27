@@ -5,6 +5,7 @@ from rest_framework.permissions import AllowAny
 from django.contrib.auth.hashers import check_password, make_password
 from django.db import IntegrityError
 from .models import Usuario
+from profesionales.models import Profesional  # <-- 1. IMPORTACIÓN AGREGADA
 
 
 class RegistroClienteView(APIView):
@@ -107,8 +108,8 @@ class LoginView(APIView):
             print(f"[DEBUG LOGIN] ERROR: Usuario con correo '{correo}' NO existe en la base de datos.")
             return Response({"error": "Credenciales inválidas o cuenta inactiva."}, status=status.HTTP_401_UNAUTHORIZED)
 
-        print(f"[DEBUG LOGIN] Usuario encontrado: ID={usuario.id_usuario if hasattr(usuario, 'id_usuario') else usuario.id}")
-        print(f"[DEBUG LOGIN] Atributos disponibles: {dir(usuario)}")
+        user_pk = getattr(usuario, 'id_usuario', getattr(usuario, 'id', None))
+        print(f"[DEBUG LOGIN] Usuario encontrado: ID={user_pk}")
 
         # Extraer hash o clave guardada
         hash_almacenado = (
@@ -117,14 +118,10 @@ class LoginView(APIView):
             getattr(usuario, 'clave', None) or 
             ''
         )
-        print(f"[DEBUG LOGIN] Hash guardado en BD: '{hash_almacenado}'")
 
         # Comparaciones posibles
         coincide_directo = (clave == hash_almacenado)
         coincide_django = check_password(clave, hash_almacenado)
-        
-        print(f"[DEBUG LOGIN] ¿Coincidencia texto plano?: {coincide_directo}")
-        print(f"[DEBUG LOGIN] ¿Coincidencia check_password?: {coincide_django}")
 
         valido = coincide_directo or coincide_django
 
@@ -137,20 +134,35 @@ class LoginView(APIView):
         if hasattr(rol_id_val, 'id_rol'):
             rol_id_val = rol_id_val.id_rol
 
-        roles_map = {1: 'ADMINISTRADOR', 2: 'PROFESIONAL', 3: 'CLIENTE'}
-        rol_nombre = roles_map.get(int(rol_id_val or 3), 'CLIENTE')
+        rol_id_int = int(rol_id_val or 3)
+        roles_map = {1: 'ADMINISTRADOR', 2: 'PROFESIONAL', 3: 'CLIENTE', 4: 'CLIENTE'}
+        rol_nombre = roles_map.get(rol_id_int, 'CLIENTE')
 
         print(f"[DEBUG LOGIN] ¡ÉXITO! Usuario autenticado con rol: {rol_nombre}\n")
 
+        # Payload base del usuario
+        usuario_data = {
+            "id_usuario": user_pk,
+            "nombre": usuario.nombre,
+            "apellido": usuario.apellido,
+            "correo": usuario.correo,
+            "telefono": getattr(usuario, 'telefono', '') or '',
+            "id_rol": rol_id_int,
+            "rol": rol_nombre
+        }
+
+        # <-- 2. BLOQUE AGREGADO: Si es PROFESIONAL, buscamos su perfil en la BD
+        if rol_id_int == 2 or rol_nombre == 'PROFESIONAL':
+            perfil = Profesional.objects.filter(id_usuario=usuario).first()
+            if perfil:
+                usuario_data["id_profesional"] = getattr(perfil, 'id_profesional', getattr(perfil, 'id', None))
+                usuario_data["especialidad"] = perfil.especialidad or ""
+                usuario_data["id_sucursal"] = getattr(perfil, 'id_sucursal_id', None)
+            else:
+                usuario_data["id_profesional"] = None
+                usuario_data["especialidad"] = "General"
+
         return Response({
             "mensaje": "Inicio de sesión exitoso",
-            "usuario": {
-                "id_usuario": getattr(usuario, 'id_usuario', getattr(usuario, 'id', None)),
-                "nombre": usuario.nombre,
-                "apellido": usuario.apellido,
-                "correo": usuario.correo,
-                "telefono": getattr(usuario, 'telefono', '') or '',
-                "id_rol": int(rol_id_val or 3),
-                "rol": rol_nombre
-            }
+            "usuario": usuario_data
         }, status=status.HTTP_200_OK)
