@@ -23,11 +23,11 @@ urlpatterns = [
     path('api/personal/', include('profesionales.urls')),
     path('api/reservas/', include('reservas.urls')),
     
-    # Habilitamos las rutas de citas y disponibilidad que usa la app móvil
+    # Esto habilita /api/citas/ y /api/citas/disponibilidad/
     path('api/', include(router.urls)),
-    path('api/citas/disponibilidad/', DisponibilidadView.as_view(), name='citas-disponibilidad'),
+    path('api/citas/disponibilidad/', DisponibilidadView.as_view(), name='disponibilidad-citas'),
 
-    # Rutas para documentación automática Swagger y OpenAPI
+    # Rutas para documentación...
     path('api/schema/', SpectacularAPIView.as_view(), name='schema'),
     path('api/docs/', SpectacularSwaggerView.as_view(url_name='schema'), name='swagger-ui'),
     path('api/redoc/', SpectacularRedocView.as_view(url_name='schema'), name='redoc'),
