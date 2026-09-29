@@ -49,6 +49,7 @@ INSTALLED_APPS = [
     'catalogos',
     'profesionales.apps.ProfesionalesConfig',
     'reservas',
+    'citas',
 ]
 
 MIDDLEWARE = [
