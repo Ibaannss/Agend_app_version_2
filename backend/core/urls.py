@@ -1,6 +1,3 @@
-"""
-URL configuration for core project. 
-"""
 from django.contrib import admin
 from django.urls import path, include
 from rest_framework.routers import DefaultRouter
@@ -11,7 +8,6 @@ from drf_spectacular.views import (
     SpectacularRedocView,
 )
 
-# Router para las vistas de citas y bloqueos
 router = DefaultRouter()
 router.register(r'citas', CitaViewSet)
 router.register(r'bloqueos', BloqueoAgendaViewSet)
@@ -23,11 +19,13 @@ urlpatterns = [
     path('api/personal/', include('profesionales.urls')),
     path('api/reservas/', include('reservas.urls')),
     
-    # Esto habilita /api/citas/ y /api/citas/disponibilidad/
-    path('api/', include(router.urls)),
+    # 1. Ponemos la disponibilidad PRIMERO para que Django la atrape al vuelo
     path('api/citas/disponibilidad/', DisponibilidadView.as_view(), name='disponibilidad-citas'),
+    
+    # 2. Luego el router general
+    path('api/', include(router.urls)),
 
-    # Rutas para documentación...
+    # Documentación
     path('api/schema/', SpectacularAPIView.as_view(), name='schema'),
     path('api/docs/', SpectacularSwaggerView.as_view(url_name='schema'), name='swagger-ui'),
     path('api/redoc/', SpectacularRedocView.as_view(url_name='schema'), name='redoc'),
