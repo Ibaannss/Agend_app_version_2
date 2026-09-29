@@ -134,15 +134,15 @@ class DisponibilidadView(APIView):
             while cursor + timedelta(minutes=duracion_min) <= limite:
                 slot_fin = cursor + timedelta(minutes=duracion_min)
 
-                # Verificar colisión con citas activas
+                # Verificar colisión convirtiendo las fechas de la BD a la hora local de Santiago
                 choca_cita = any(
-                    (cursor < c.fecha_hora_fin and slot_fin > c.fecha_hora_inicio)
+                    (cursor < timezone.localtime(c.fecha_hora_fin, tz) and slot_fin > timezone.localtime(c.fecha_hora_inicio, tz))
                     for c in citas_ocupadas
                 )
 
                 # Verificar colisión con bloqueos
                 choca_bloqueo = any(
-                    (cursor < b.fecha_fin and slot_fin > b.fecha_inicio)
+                    (cursor < timezone.localtime(b.fecha_fin, tz) and slot_fin > timezone.localtime(b.fecha_inicio, tz))
                     for b in bloqueos
                 )
 
@@ -154,7 +154,6 @@ class DisponibilidadView(APIView):
                         "datetime_fin": slot_fin.isoformat()
                     })
 
-                # Paso de avance del cursor (30 min o 15 min para servicios cortos)
                 cursor += timedelta(minutes=15)
 
         return Response({
