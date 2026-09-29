@@ -44,6 +44,7 @@ INSTALLED_APPS = [
     'rest_framework',
     'corsheaders',
     'rest_framework_simplejwt',
+    'drf_spectacular',
     'authentication',
     'catalogos',
     'profesionales.apps.ProfesionalesConfig',
@@ -147,6 +148,7 @@ REST_FRAMEWORK = {
     'DEFAULT_AUTHENTICATION_CLASSES': (
         'rest_framework_simplejwt.authentication.JWTAuthentication',
     ),
+    'DEFAULT_SCHEMA_CLASS': 'drf_spectacular.openapi.AutoSchema',
 }
 
 SIMPLE_JWT = {
@@ -159,3 +161,10 @@ SIMPLE_JWT = {
 }
 
 AUTH_USER_MODEL = 'authentication.Usuario'
+
+SPECTACULAR_SETTINGS = {
+    'TITLE': 'AgendApp API',
+    'DESCRIPTION': 'Documentación interactiva de endpoints para AgendApp (Web y Móvil)',
+    'VERSION': '1.0.0',
+    'SERVE_INCLUDE_SCHEMA': False,
+}
