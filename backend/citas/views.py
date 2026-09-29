@@ -112,15 +112,14 @@ class DisponibilidadView(APIView):
 
         citas_ocupadas = Cita.objects.filter(
             id_profesional_id=profesional_id,
-            fecha_hora_inicio__gte=inicio_dia,
-            fecha_hora_fin__lte=fin_dia
+            fecha_hora_inicio__lt=fin_dia,
+            fecha_hora_fin__gt=inicio_dia
         ).exclude(estado='CANCELADA')
 
         bloqueos = BloqueoAgenda.objects.filter(
             id_profesional_id=profesional_id,
             fecha_inicio__lt=fin_dia,
             fecha_fin__gt=inicio_dia
-        )
 
         slots_disponibles = []
 
