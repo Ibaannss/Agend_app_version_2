@@ -111,6 +111,11 @@ class DisponibilidadView(APIView):
         if not horarios.exists():
             return Response({"fecha": fecha_str, "slots_disponibles": [], "mensaje": "El profesional no atiende este día."})
 
+        # --- DEFINIR ZONA HORARIA Y RANGOS DEL DÍA (FALTABA ESTO) ---
+        tz = timezone.get_current_timezone()
+        inicio_dia = timezone.make_aware(datetime.combine(fecha_consulta, datetime.min.time()), tz)
+        fin_dia = timezone.make_aware(datetime.combine(fecha_consulta, datetime.max.time()), tz)
+
         # 4. Obtener citas activas exclusivamente de ESE profesional para ese día
         citas_ocupadas = Cita.objects.filter(
             id_profesional_id=profesional_id_int,
