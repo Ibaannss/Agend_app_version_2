@@ -99,25 +99,27 @@ class DisponibilidadView(APIView):
 
         # 2. Obtener día de la semana (0=Domingo, 1=Lunes, ..., 6=Sábado en PostgreSQL)
         dia_postgres = (fecha_consulta.weekday() + 1) % 7
+        
+        # Asegurar que profesional_id sea un número entero válido
+        try:
+            profesional_id_int = int(profesional_id)
+        except (ValueError, TypeError):
+            return Response({"error": "ID de profesional inválido."}, status=status.HTTP_400_BAD_REQUEST)
 
         # 3. Consultar horario laboral del profesional para ese día
-        horarios = HorarioDisponible.objects.filter(id_profesional_id=profesional_id, dia_semana=dia_postgres)
+        horarios = HorarioDisponible.objects.filter(id_profesional_id=profesional_id_int, dia_semana=dia_postgres)
         if not horarios.exists():
             return Response({"fecha": fecha_str, "slots_disponibles": [], "mensaje": "El profesional no atiende este día."})
 
-        # 4. Obtener citas activas y bloqueos de ese día
-        tz = timezone.get_current_timezone()
-        inicio_dia = timezone.make_aware(datetime.combine(fecha_consulta, datetime.min.time()), tz)
-        fin_dia = timezone.make_aware(datetime.combine(fecha_consulta, datetime.max.time()), tz)
-
+        # 4. Obtener citas activas exclusivamente de ESE profesional para ese día
         citas_ocupadas = Cita.objects.filter(
-            id_profesional_id=profesional_id,
-            fecha_hora_inicio__gte=inicio_dia,
-            fecha_hora_fin__lte=fin_dia
-        ).exclude(estado='CANCELADA')
+            id_profesional_id=profesional_id_int,
+            fecha_hora_inicio__lt=fin_dia,
+            fecha_hora_fin__gt=inicio_dia
+        ).exclude(estado__in=['CANCELADA'])
 
         bloqueos = BloqueoAgenda.objects.filter(
-            id_profesional_id=profesional_id,
+            id_profesional_id=profesional_id_int,
             fecha_inicio__lt=fin_dia,
             fecha_fin__gt=inicio_dia
         )
