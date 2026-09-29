@@ -29,7 +29,7 @@ SECRET_KEY = 'django-insecure-@te4mhkswy1q#s$5-te0hqtf%$v-6b#sievz&p-1!sl&7382@-
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = True
 
-ALLOWED_HOSTS = [*]
+ALLOWED_HOSTS = [agendapp-backend-djml.onrender.com]
 
 
 # Application definition
