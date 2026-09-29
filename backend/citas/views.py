@@ -95,7 +95,7 @@ class DisponibilidadView(APIView):
         except Servicio.DoesNotExist:
             return Response({"error": "Servicio no encontrado o inactivo."}, status=status.HTTP_404_NOT_FOUND)
 
-        duracion_min = servicio.duracion_min
+        duracion_min = servicio.duracion_minutos
 
         # 2. Obtener día de la semana (0=Domingo, 1=Lunes, ..., 6=Sábado en PostgreSQL)
         dia_postgres = (fecha_consulta.weekday() + 1) % 7
