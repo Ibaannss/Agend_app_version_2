@@ -48,7 +48,6 @@ INSTALLED_APPS = [
     'authentication',
     'catalogos',
     'profesionales.apps.ProfesionalesConfig',
-    'reservas',
     'citas',
 ]
 
