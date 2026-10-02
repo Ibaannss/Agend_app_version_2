@@ -95,7 +95,7 @@ class DisponibilidadView(APIView):
         except Servicio.DoesNotExist:
             return Response({"error": "Servicio no encontrado o inactivo."}, status=status.HTTP_404_NOT_FOUND)
 
-        duracion_min = servicio.duracion_min
+        duracion_min = servicio.duracion_minutos
 
         # 2. Obtener día de la semana (0=Domingo, 1=Lunes, ..., 6=Sábado en PostgreSQL)
         dia_postgres = (fecha_consulta.weekday() + 1) % 7
@@ -110,6 +110,11 @@ class DisponibilidadView(APIView):
         horarios = HorarioDisponible.objects.filter(id_profesional_id=profesional_id_int, dia_semana=dia_postgres)
         if not horarios.exists():
             return Response({"fecha": fecha_str, "slots_disponibles": [], "mensaje": "El profesional no atiende este día."})
+
+        # --- DEFINIR ZONA HORARIA Y RANGOS DEL DÍA (FALTABA ESTO) ---
+        tz = timezone.get_current_timezone()
+        inicio_dia = timezone.make_aware(datetime.combine(fecha_consulta, datetime.min.time()), tz)
+        fin_dia = timezone.make_aware(datetime.combine(fecha_consulta, datetime.max.time()), tz)
 
         # 4. Obtener citas activas exclusivamente de ESE profesional para ese día
         citas_ocupadas = Cita.objects.filter(
@@ -134,15 +139,15 @@ class DisponibilidadView(APIView):
             while cursor + timedelta(minutes=duracion_min) <= limite:
                 slot_fin = cursor + timedelta(minutes=duracion_min)
 
-                # Verificar colisión con citas activas
+                # Verificar colisión convirtiendo las fechas de la BD a la hora local de Santiago
                 choca_cita = any(
-                    (cursor < c.fecha_hora_fin and slot_fin > c.fecha_hora_inicio)
+                    (cursor < timezone.localtime(c.fecha_hora_fin, tz) and slot_fin > timezone.localtime(c.fecha_hora_inicio, tz))
                     for c in citas_ocupadas
                 )
 
                 # Verificar colisión con bloqueos
                 choca_bloqueo = any(
-                    (cursor < b.fecha_fin and slot_fin > b.fecha_inicio)
+                    (cursor < timezone.localtime(b.fecha_fin, tz) and slot_fin > timezone.localtime(b.fecha_inicio, tz))
                     for b in bloqueos
                 )
 
@@ -154,7 +159,6 @@ class DisponibilidadView(APIView):
                         "datetime_fin": slot_fin.isoformat()
                     })
 
-                # Paso de avance del cursor (30 min o 15 min para servicios cortos)
                 cursor += timedelta(minutes=15)
 
         return Response({
