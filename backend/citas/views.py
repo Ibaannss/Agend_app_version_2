@@ -95,29 +95,36 @@ class DisponibilidadView(APIView):
         except Servicio.DoesNotExist:
             return Response({"error": "Servicio no encontrado o inactivo."}, status=status.HTTP_404_NOT_FOUND)
 
-        duracion_min = servicio.duracion_min
+        duracion_min = servicio.duracion_minutos
 
         # 2. Obtener día de la semana (0=Domingo, 1=Lunes, ..., 6=Sábado en PostgreSQL)
         dia_postgres = (fecha_consulta.weekday() + 1) % 7
+        
+        # Asegurar que profesional_id sea un número entero válido
+        try:
+            profesional_id_int = int(profesional_id)
+        except (ValueError, TypeError):
+            return Response({"error": "ID de profesional inválido."}, status=status.HTTP_400_BAD_REQUEST)
 
         # 3. Consultar horario laboral del profesional para ese día
-        horarios = HorarioDisponible.objects.filter(id_profesional_id=profesional_id, dia_semana=dia_postgres)
+        horarios = HorarioDisponible.objects.filter(id_profesional_id=profesional_id_int, dia_semana=dia_postgres)
         if not horarios.exists():
             return Response({"fecha": fecha_str, "slots_disponibles": [], "mensaje": "El profesional no atiende este día."})
 
-        # 4. Obtener citas activas y bloqueos de ese día
+        # --- DEFINIR ZONA HORARIA Y RANGOS DEL DÍA (FALTABA ESTO) ---
         tz = timezone.get_current_timezone()
         inicio_dia = timezone.make_aware(datetime.combine(fecha_consulta, datetime.min.time()), tz)
         fin_dia = timezone.make_aware(datetime.combine(fecha_consulta, datetime.max.time()), tz)
 
+        # 4. Obtener citas activas exclusivamente de ESE profesional para ese día
         citas_ocupadas = Cita.objects.filter(
-            id_profesional_id=profesional_id,
-            fecha_hora_inicio__gte=inicio_dia,
-            fecha_hora_fin__lte=fin_dia
-        ).exclude(estado='CANCELADA')
+            id_profesional_id=profesional_id_int,
+            fecha_hora_inicio__lt=fin_dia,
+            fecha_hora_fin__gt=inicio_dia
+        ).exclude(estado__in=['CANCELADA'])
 
         bloqueos = BloqueoAgenda.objects.filter(
-            id_profesional_id=profesional_id,
+            id_profesional_id=profesional_id_int,
             fecha_inicio__lt=fin_dia,
             fecha_fin__gt=inicio_dia
         )
@@ -132,15 +139,15 @@ class DisponibilidadView(APIView):
             while cursor + timedelta(minutes=duracion_min) <= limite:
                 slot_fin = cursor + timedelta(minutes=duracion_min)
 
-                # Verificar colisión con citas activas
+                # Verificar colisión convirtiendo las fechas de la BD a la hora local de Santiago
                 choca_cita = any(
-                    (cursor < c.fecha_hora_fin and slot_fin > c.fecha_hora_inicio)
+                    (cursor < timezone.localtime(c.fecha_hora_fin, tz) and slot_fin > timezone.localtime(c.fecha_hora_inicio, tz))
                     for c in citas_ocupadas
                 )
 
                 # Verificar colisión con bloqueos
                 choca_bloqueo = any(
-                    (cursor < b.fecha_fin and slot_fin > b.fecha_inicio)
+                    (cursor < timezone.localtime(b.fecha_fin, tz) and slot_fin > timezone.localtime(b.fecha_inicio, tz))
                     for b in bloqueos
                 )
 
@@ -152,7 +159,6 @@ class DisponibilidadView(APIView):
                         "datetime_fin": slot_fin.isoformat()
                     })
 
-                # Paso de avance del cursor (30 min o 15 min para servicios cortos)
                 cursor += timedelta(minutes=15)
 
         return Response({
