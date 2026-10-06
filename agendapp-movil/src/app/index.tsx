@@ -32,9 +32,16 @@ export default function LoginScreen() {
       const data = await respuesta.json();
 
       if (respuesta.ok) {
+        // Imprime la respuesta completa para ver exactamente cómo Django nombra al token
+        console.log("RESPUESTA COMPLETA DE DJANGO:", data);
+
+        // Atrapa el token usando los nombres más comunes de DRF/SimpleJWT/Knox
+        const tokenReal = data.access || data.token || data.access_token;
+        
         BaseDeDatosLocal.usuarioActivo = data.usuario || { correo: correo, rol: 'CLIENTE', nombre: 'Usuario' };
-        BaseDeDatosLocal.token = data.access;
-        console.log("MI ACCESS TOKEN REAL ES:", data.access);
+        BaseDeDatosLocal.token = tokenReal;
+        
+        console.log("TOKEN GUARDADO EN MEMORIA:", tokenReal);
         
         router.replace('/catalogo');
       } else {

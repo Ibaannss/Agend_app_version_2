@@ -45,7 +45,7 @@ export default function MisCitasScreen() {
                 style: 'destructive',
                 onPress: async () => {
                     try {
-                        const response = await fetch(`${API_URL}/citas/${idCita}/cancelar/`, {
+                        const response = await fetch(`${API_URL}/citas/${idCita}/cancelar/?cliente=${clienteId}`, {
                             method: 'POST',
                             headers: { 'Content-Type': 'application/json' }
                         });
@@ -74,7 +74,9 @@ export default function MisCitasScreen() {
         return (
             <View style={styles.card}>
                 <View style={styles.cardHeader}>
-                    <Text style={styles.cardTitle}>Servicio #{item.id_servicio}</Text>
+                    <Text style={styles.cardTitle}>
+                        {item.nombre_servicio || item.servicio?.nombre || item.servicio_nombre || `Servicio #${item.id_servicio}`}
+                    </Text>
                     <View style={[styles.badge, { backgroundColor: colorEstado }]}>
                         <Text style={styles.badgeText}>{item.estado}</Text>
                     </View>
