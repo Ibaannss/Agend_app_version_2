@@ -4,6 +4,7 @@ from rest_framework import status
 from rest_framework.permissions import AllowAny
 from django.contrib.auth.hashers import check_password, make_password
 from django.db import IntegrityError
+from rest_framework_simplejwt.tokens import RefreshToken
 from .models import Usuario
 from profesionales.models import Profesional  # <-- 1. IMPORTACIÓN AGREGADA
 
@@ -106,7 +107,28 @@ class LoginView(APIView):
 
         if not usuario:
             print(f"[DEBUG LOGIN] ERROR: Usuario con correo '{correo}' NO existe en la base de datos.")
+      # BLOQUE AGREGADO: Si es PROFESIONAL, buscamos su perfil en la BD
+        if rol_id_int == 2 or rol_nombre == 'PROFESIONAL':
+            perfil = Profesional.objects.filter(id_usuario=usuario).first()
+            if perfil:
+                usuario_data["id_profesional"] = getattr(perfil, 'id_profesional', getattr(perfil, 'id', None))
+                usuario_data["especialidad"] = perfil.especialidad or ""
+                usuario_data["id_sucursal"] = getattr(perfil, 'id_sucursal_id', None)
+            else:
+                usuario_data["id_profesional"] = None
+                usuario_data["especialidad"] = "General"
+
+        # GENERAR EL TOKEN JWT AQUÍ
+        refresh = RefreshToken.for_user(usuario)
+        access_token = str(refresh.access_token)
+
+        return Response({
+            "mensaje": "Inicio de sesión exitoso",
+            "usuario": usuario_data,
+            "access": access_token  # <-- 4. AHORA SÍ ENVIAMOS EL TOKEN A REACT NATIVE
+        }, status=status.HTTP_200_OK)
             return Response({"error": "Credenciales inválidas o cuenta inactiva."}, status=status.HTTP_401_UNAUTHORIZED)
+            
 
         user_pk = getattr(usuario, 'id_usuario', getattr(usuario, 'id', None))
         print(f"[DEBUG LOGIN] Usuario encontrado: ID={user_pk}")
