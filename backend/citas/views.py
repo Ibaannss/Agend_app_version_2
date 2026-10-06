@@ -22,18 +22,25 @@ class CitaViewSet(viewsets.ModelViewSet):
         return CitaReadSerializer
 
     def get_queryset(self):
-        queryset = super().get_queryset()
-        cliente_id = self.request.query_params.get('cliente')
-        profesional_id = self.request.query_params.get('profesional')
-        estado = self.request.query_params.get('estado')
+        usuario = self.request.user
+        # 1. Bloqueo de seguridad: Si el usuario no está autenticado, la consulta es vacía
+        if not usuario.is_authenticated:
+            return Cita.objects.none()
 
-        if cliente_id:
-            queryset = queryset.filter(id_cliente_id=cliente_id)
-        if profesional_id:
-            queryset = queryset.filter(id_profesional_id=profesional_id)
-        if estado:
-            queryset = queryset.filter(estado=estado)
-        return queryset
+        # 2. Extracción segura del rol
+        rol = usuario.rol.nombre.upper() if hasattr(usuario, 'rol') and usuario.rol else 'CLIENTE'
+
+        # 3. Filtrado de la base de datos según la identidad
+        if rol == 'ADMINISTRADOR':
+            return Cita.objects.all() # El administrador tiene acceso global
+        
+        elif rol == 'CLIENTE':
+            return Cita.objects.filter(id_cliente=usuario) # El cliente solo ve sus propios registros
+        
+        elif rol == 'PROFESIONAL':
+            return Cita.objects.filter(id_profesional__id_usuario=usuario) # El profesional solo ve su agenda
+            
+        return Cita.objects.none()
 
     # =========================================================================
     # ACCIÓN DE CANCELACIÓN DINÁMICA (Dentro de CitaViewSet)
