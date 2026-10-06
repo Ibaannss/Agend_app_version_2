@@ -4,9 +4,9 @@ from rest_framework import status
 from rest_framework.permissions import AllowAny
 from django.contrib.auth.hashers import check_password, make_password
 from django.db import IntegrityError
+from rest_framework_simplejwt.tokens import RefreshToken
 from .models import Usuario
-from profesionales.models import Profesional  # <-- 1. IMPORTACIÓN AGREGADA
-
+from profesionales.models import Profesional
 
 class RegistroClienteView(APIView):
     permission_classes = [AllowAny]
@@ -40,13 +40,13 @@ class RegistroClienteView(APIView):
                 activo=True
             )
 
-            # Asignar rol (FK o campo entero)
+            # Asignar rol
             if hasattr(usuario, 'id_rol_id'):
                 usuario.id_rol_id = 3
             elif hasattr(usuario, 'id_rol'):
                 usuario.id_rol = 3
 
-            # Asignar contraseña según la definición del modelo
+            # Asignar contraseña
             if hasattr(usuario, 'set_password'):
                 usuario.set_password(clave)
             elif hasattr(usuario, 'password'):
@@ -101,7 +101,7 @@ class LoginView(APIView):
         if not correo or not clave:
             return Response({"error": "Debe ingresar correo y contraseña."}, status=status.HTTP_400_BAD_REQUEST)
 
-        # Buscar usuario insensible a mayúsculas/minúsculas
+        # Buscar usuario
         usuario = Usuario.objects.filter(correo__iexact=correo).first()
 
         if not usuario:
@@ -111,7 +111,7 @@ class LoginView(APIView):
         user_pk = getattr(usuario, 'id_usuario', getattr(usuario, 'id', None))
         print(f"[DEBUG LOGIN] Usuario encontrado: ID={user_pk}")
 
-        # Extraer hash o clave guardada
+        # Extraer hash
         hash_almacenado = (
             getattr(usuario, 'clave_hash', None) or 
             getattr(usuario, 'password', None) or 
@@ -119,10 +119,8 @@ class LoginView(APIView):
             ''
         )
 
-        # Comparaciones posibles
         coincide_directo = (clave == hash_almacenado)
         coincide_django = check_password(clave, hash_almacenado)
-
         valido = coincide_directo or coincide_django
 
         if not valido:
@@ -151,7 +149,7 @@ class LoginView(APIView):
             "rol": rol_nombre
         }
 
-        # <-- 2. BLOQUE AGREGADO: Si es PROFESIONAL, buscamos su perfil en la BD
+        # Perfil Profesional
         if rol_id_int == 2 or rol_nombre == 'PROFESIONAL':
             perfil = Profesional.objects.filter(id_usuario=usuario).first()
             if perfil:
@@ -162,7 +160,17 @@ class LoginView(APIView):
                 usuario_data["id_profesional"] = None
                 usuario_data["especialidad"] = "General"
 
+        # GENERACIÓN MANUAL Y SEGURA DEL TOKEN
+        refresh = RefreshToken()
+        refresh['user_id'] = user_pk
+        access_token = str(refresh.access_token)
+
         return Response({
             "mensaje": "Inicio de sesión exitoso",
+<<<<<<< HEAD
             "usuario": usuario_data
+=======
+            "usuario": usuario_data,
+            "access": access_token 
+>>>>>>> 0dbca480dc66600e4d1cf80ee623f66109dbe67b
         }, status=status.HTTP_200_OK)

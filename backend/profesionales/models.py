@@ -3,7 +3,7 @@ from authentication.models import Usuario
 from catalogos.models import Sucursal, Servicio
 
 class Profesional(models.Model):
-    id_profesional = models.BigAutoField(primary_key=True)
+    id_profesional = models.BigAutoField(primary_key=True)    
     id_usuario = models.OneToOneField(Usuario, on_delete=models.CASCADE, db_column='id_usuario')
     id_sucursal= models.ForeignKey(Sucursal, on_delete=models.CASCADE, db_column='id_sucursal')
     especialidad = models.CharField(max_length=100, null=True, blank=True)
@@ -31,6 +31,7 @@ class Profesional(models.Model):
 
 
 class ProfesionalServicio(models.Model):
+    id_profesional_servicio = models.BigAutoField(primary_key=True)
     id_profesional = models.ForeignKey(
         Profesional,
         on_delete=models.CASCADE,

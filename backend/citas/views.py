@@ -22,18 +22,41 @@ class CitaViewSet(viewsets.ModelViewSet):
         return CitaReadSerializer
 
     def get_queryset(self):
-        queryset = super().get_queryset()
-        cliente_id = self.request.query_params.get('cliente')
-        profesional_id = self.request.query_params.get('profesional')
-        estado = self.request.query_params.get('estado')
-
-        if cliente_id:
-            queryset = queryset.filter(id_cliente_id=cliente_id)
-        if profesional_id:
-            queryset = queryset.filter(id_profesional_id=profesional_id)
-        if estado:
-            queryset = queryset.filter(estado=estado)
-        return queryset
+            queryset = Cita.objects.all().order_by('-fecha_hora_inicio')
+            usuario = self.request.user
+    
+            # 1. Si la petición viene autenticada con Token (Panel Web)
+            if usuario.is_authenticated:
+                rol = usuario.rol.nombre.upper() if hasattr(usuario, 'rol') and usuario.rol else 'CLIENTE'
+                if rol == 'ADMINISTRADOR':
+                    return queryset
+                elif rol == 'CLIENTE':
+                    return queryset.filter(id_cliente_id=usuario.id)
+                elif rol == 'PROFESIONAL':
+                    return queryset.filter(id_profesional__id_usuario=usuario.id)
+    
+            # 2. Si la petición NO tiene Token (App Móvil React Native)
+            # Rescatamos los parámetros de la URL para que tu app vuelva a funcionar
+            cliente_id = self.request.query_params.get('cliente')
+            profesional_id = self.request.query_params.get('profesional')
+            fecha = self.request.query_params.get('fecha')
+    
+            if cliente_id:
+                queryset = queryset.filter(id_cliente_id=cliente_id)
+            if profesional_id:
+                queryset = queryset.filter(id_profesional_id=profesional_id)
+            if fecha:
+                try:
+                    fecha_obj = datetime.strptime(fecha, "%Y-%m-%d").date()
+                    queryset = queryset.filter(fecha_hora_inicio__date=fecha_obj)
+                except ValueError:
+                    pass
+                    
+            # Seguridad extra: Si no tiene token y no manda filtros desde la app, no ve nada
+            if not usuario.is_authenticated and not cliente_id and not profesional_id and not fecha:
+                 return Cita.objects.none()
+    
+            return queryset
 
     # =========================================================================
     # ACCIÓN DE CANCELACIÓN DINÁMICA (Dentro de CitaViewSet)
