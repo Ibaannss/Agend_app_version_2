@@ -129,24 +129,27 @@
   <section id="tab-profesionales" class="content-card tab-content">
     <div class="table-header">
       <h2>Profesionales y Horarios de Trabajo</h2>
-      <button class="btn-create" onclick="openModal('modal-profesional')">+ Alta de Profesional</button>
+      <button class="btn-create" onclick="abrirModalNuevoProfesional()">+ Alta de Profesional</button>
     </div>
-    <table>
-      <thead>
-        <tr>
-          <th>Profesional</th>
-          <th>Correo</th>
-          <th>Sucursal</th>
-          <th>Especialidad</th>
-          <th>Comisión</th>
-          <th>Horario de Atención</th>
-          <th>Estado</th>
-        </tr>
-      </thead>
-      <tbody id="profesionales-body">
-        <tr><td colspan="7" style="text-align:center; color:var(--text-muted);">Cargando profesionales...</td></tr>
-      </tbody>
-    </table>
+    <div style="overflow-x: auto;">
+      <table>
+        <thead>
+          <tr>
+            <th>Profesional</th>
+            <th>Correo</th>
+            <th>Sucursal</th>
+            <th>Especialidad</th>
+            <th>Comisión</th>
+            <th>Horario de Atención</th>
+            <th>Estado</th>
+            <th>Acciones</th>
+          </tr>
+        </thead>
+        <tbody id="profesionales-body">
+          <tr><td colspan="8" style="text-align:center; color:var(--text-muted);">Cargando profesionales...</td></tr>
+        </tbody>
+      </table>
+    </div>
   </section>
 
   <!-- 2. TAB: SERVICIOS -->
@@ -216,7 +219,7 @@
     </table>
   </section>
 
-  <!-- MODAL: ALTA DE PROFESIONAL + HORARIOS -->
+  <!-- MODAL: ALTA/EDICIÓN DE PROFESIONAL -->
   <div id="modal-profesional" class="modal">
     <div class="modal-box">
       <h3>Registrar Profesional y Asignar Horarios</h3>
@@ -239,7 +242,7 @@
             <input type="text" id="pro-telefono" placeholder="+56911223344">
           </div>
           <div class="form-group">
-            <label>Contraseña Provisoria (*)</label>
+            <label>Contraseña (*)</label>
             <input type="password" id="pro-password" required placeholder="••••••••">
           </div>
           <div class="form-group full">
@@ -255,25 +258,29 @@
             <input type="number" id="pro-comision" step="0.01" min="0" max="100" value="0.00">
           </div>
 
-          <div class="form-group full" style="border-top:1px solid var(--card-border); padding-top:14px; margin-top:6px;">
-            <label style="color:var(--accent-green); font-weight:700;">Días Laborales Habituales</label>
-            <div class="dias-selector">
-              <label class="dia-chip"><input type="checkbox" name="pro-dias" value="1" checked> Lun</label>
-              <label class="dia-chip"><input type="checkbox" name="pro-dias" value="2" checked> Mar</label>
-              <label class="dia-chip"><input type="checkbox" name="pro-dias" value="3" checked> Mié</label>
-              <label class="dia-chip"><input type="checkbox" name="pro-dias" value="4" checked> Jue</label>
-              <label class="dia-chip"><input type="checkbox" name="pro-dias" value="5" checked> Vie</label>
-              <label class="dia-chip"><input type="checkbox" name="pro-dias" value="6"> Sáb</label>
-              <label class="dia-chip"><input type="checkbox" name="pro-dias" value="0"> Dom</label>
+          <div id="seccion-horarios" class="form-group full">
+            <div style="border-top:1px solid var(--card-border); padding-top:14px; margin-top:6px;">
+              <label style="color:var(--accent-green); font-weight:700;">Días Laborales Habituales</label>
+              <div class="dias-selector">
+                <label class="dia-chip"><input type="checkbox" name="pro-dias" value="1" checked> Lun</label>
+                <label class="dia-chip"><input type="checkbox" name="pro-dias" value="2" checked> Mar</label>
+                <label class="dia-chip"><input type="checkbox" name="pro-dias" value="3" checked> Mié</label>
+                <label class="dia-chip"><input type="checkbox" name="pro-dias" value="4" checked> Jue</label>
+                <label class="dia-chip"><input type="checkbox" name="pro-dias" value="5" checked> Vie</label>
+                <label class="dia-chip"><input type="checkbox" name="pro-dias" value="6"> Sáb</label>
+                <label class="dia-chip"><input type="checkbox" name="pro-dias" value="0"> Dom</label>
+              </div>
             </div>
-          </div>
-          <div class="form-group">
-            <label>Hora Entrada</label>
-            <input type="time" id="pro-hora-inicio" value="09:00" required>
-          </div>
-          <div class="form-group">
-            <label>Hora Salida</label>
-            <input type="time" id="pro-hora-fin" value="18:00" required>
+            <div class="form-grid" style="margin-top: 14px;">
+              <div class="form-group">
+                <label>Hora Entrada</label>
+                <input type="time" id="pro-hora-inicio" value="09:00">
+              </div>
+              <div class="form-group">
+                <label>Hora Salida</label>
+                <input type="time" id="pro-hora-fin" value="18:00">
+              </div>
+            </div>
           </div>
         </div>
 
@@ -370,6 +377,13 @@
 
     document.getElementById('adminInfo').innerHTML = `Sesión: <strong>${session.nombre || session.correo || 'Admin'}</strong>`;
 
+    let cacheLocales = [];
+    let epLocales = '/catalogos/sucursales/';
+
+    // NUEVAS VARIABLES GLOBALES PARA LA EDICIÓN DE PROFESIONALES
+    let listaProfesionalesAdmin = [];
+    let profesionalEditandoId = null;
+
     function switchTab(e, tabId) {
       document.querySelectorAll('.tab-btn').forEach(btn => btn.classList.remove('active'));
       document.querySelectorAll('.tab-content').forEach(c => c.style.display = 'none');
@@ -401,11 +415,7 @@
       return { data: [], workingEndpoint: endpoints[0] };
     }
 
-    let cacheLocales = [];
-    let epLocales = '/catalogos/sucursales/';
-
-    // 3. Cargar Profesionales con sus horarios asignados
-   // 3. Cargar Profesionales con sus horarios y botón de eliminación
+    // 3. Cargar Profesionales con sus horarios y botones de acción
     async function cargarProfesionales() {
       const tbody = document.getElementById('profesionales-body');
       try {
@@ -415,6 +425,9 @@
         const data = await res.json();
         const profesionales = Array.isArray(data) ? data : (data.results || []);
         document.getElementById('kpi-profesionales').textContent = profesionales.length;
+
+        // Almacenamos los datos en la variable global para poder rellenar el formulario al editar
+        listaProfesionalesAdmin = profesionales;
 
         if (profesionales.length === 0) {
           tbody.innerHTML = '<tr><td colspan="8" style="text-align:center; color:var(--text-muted);">No hay profesionales registrados.</td></tr>';
@@ -439,7 +452,10 @@
               <td>${p.porcentaje_comision || '0.00'}%</td>
               <td style="font-size:12px; line-height:1.4;">${listaHorarios}</td>
               <td><span class="badge badge-success">${p.estado_laboral || 'ACTIVO'}</span></td>
-              <td style="text-align: right;">
+              <td style="text-align: right; display: flex; gap: 6px; justify-content: flex-end;">
+                <button class="btn-create" style="padding: 4px 8px; font-size: 11px; border-radius: 6px; background: #38bdf8; color: #0f141c;" onclick="editarProfesional(${proId})">
+                  ✏️ Editar
+                </button>
                 <button class="btn-logout" style="padding: 4px 8px; font-size: 11px; border-radius: 6px;" onclick="eliminarProfesional(${proId}, '${nom}')">
                   🗑️ Eliminar
                 </button>
@@ -452,7 +468,6 @@
       }
     }
 
-    // Función para dar de baja o eliminar un profesional
     async function eliminarProfesional(id, nombre) {
       if (!confirm(`¿Estás seguro de que deseas eliminar al profesional "${nombre}" (#${id})?\n\nEsta acción eliminará su registro y sus horarios asignados.`)) {
         return;
@@ -479,10 +494,8 @@
 
     // 4. Sincronización Integral del Dashboard
     async function cargarTodo() {
-      // A. Cargar Profesionales
       await cargarProfesionales();
 
-      // B. Cargar Sucursales
       const resLoc = await fetchSmart(['/catalogos/sucursales/', '/catalogos/locales/', '/catalogos/sucursal/']);
       cacheLocales = resLoc.data || [];
       epLocales = resLoc.workingEndpoint;
@@ -503,7 +516,6 @@
         `;
       }).join('') : '<tr><td colspan="5" style="text-align:center; color:var(--text-muted);">Sin sucursales registradas.</td></tr>';
 
-      // C. Poblar Selects de Sucursales en Modales
       const optsLoc = cacheLocales.map(l => {
         const pk = l.id_sucursal ?? l.id_local ?? l.id ?? l.pk;
         const nombre = l.nombre || l.nombre_comercial || `Sucursal #${pk}`;
@@ -515,7 +527,6 @@
       if (selSrv) selSrv.innerHTML = optsLoc;
       if (selPro) selPro.innerHTML = optsLoc;
 
-      // D. Cargar Servicios
       try {
         const resSrv = await fetchSmart(['/catalogos/servicios/', '/catalogos/servicio/']);
         const servicios = resSrv.data || [];
@@ -543,9 +554,8 @@
         document.getElementById('servicios-body').innerHTML = `<tr><td colspan="5" style="text-align:center; color:var(--danger);">Error al cargar servicios: ${errSrv.message}</td></tr>`;
       }
 
-      // E. Cargar Citas
       try {
-        const resCitas = await fetchSmart(['/reservas/citas/', '/reservas/cita/']);
+        const resCitas = await fetchSmart(['/citas/', '/reservas/citas/', '/reservas/cita/']);
         const citas = resCitas.data || [];
         document.getElementById('kpi-citas').textContent = citas.length;
 
@@ -575,81 +585,135 @@
       }
     }
 
-    // 5. Guardar Profesional + Horarios
+    // 5. Gestión del Modal Inteligente de Profesionales (CREAR y EDITAR)
+    function abrirModalNuevoProfesional() {
+        profesionalEditandoId = null;
+        document.getElementById('form-profesional').reset();
+        
+        // Configuramos la vista para CREACIÓN
+        document.getElementById('pro-password').required = true;
+        document.getElementById('pro-password').placeholder = "••••••••";
+        document.querySelector('#modal-profesional h3').textContent = "Registrar Profesional y Asignar Horarios";
+        document.querySelector('#form-profesional .btn-create').textContent = "Guardar Profesional";
+        document.getElementById('seccion-horarios').style.display = 'block'; // Mostrar la sección de horarios
+        
+        openModal('modal-profesional');
+    }
+
+    function editarProfesional(id) {
+        const pro = listaProfesionalesAdmin.find(p => (p.id_profesional ?? p.id) === id);
+        if (!pro) return;
+
+        profesionalEditandoId = id;
+
+        // Rellenar los campos del modal con los datos del profesional seleccionado
+        document.getElementById('pro-nombre').value = pro.nombre || pro.usuario?.nombre || '';
+        document.getElementById('pro-apellido').value = pro.apellido || pro.usuario?.apellido || '';
+        document.getElementById('pro-correo').value = pro.correo || pro.usuario?.correo || '';
+        document.getElementById('pro-telefono').value = pro.telefono || pro.usuario?.telefono || '';
+        document.getElementById('pro-especialidad').value = pro.especialidad || '';
+        document.getElementById('pro-comision').value = pro.porcentaje_comision || '0.00';
+        
+        const selectLocal = document.getElementById('pro-local');
+        if (selectLocal) {
+            const sucId = pro.id_sucursal?.id_sucursal ?? pro.id_sucursal ?? pro.id_sucursal_id;
+            selectLocal.value = sucId || '';
+        }
+
+        // Configuramos la vista para EDICIÓN
+        document.getElementById('pro-password').required = false;
+        document.getElementById('pro-password').placeholder = "(Dejar en blanco para no cambiar la clave)";
+        document.querySelector('#modal-profesional h3').textContent = "Editar Datos del Profesional";
+        document.querySelector('#form-profesional .btn-create').textContent = "Guardar Cambios";
+        document.getElementById('seccion-horarios').style.display = 'none'; // Ocultar horarios al editar
+
+        openModal('modal-profesional');
+    }
+
     async function guardarProfesional(e) {
       e.preventDefault();
 
       const selectLocal = document.getElementById('pro-local');
-      const rawVal = selectLocal ? selectLocal.value : null;
-      const idSucursalSeleccionada = (rawVal && !isNaN(parseInt(rawVal))) ? parseInt(rawVal) : null;
+      const idSucursalSeleccionada = selectLocal && selectLocal.value ? parseInt(selectLocal.value) : null;
 
       if (!idSucursalSeleccionada) {
         alert('Por favor selecciona una sucursal válida.');
         return;
       }
 
-      const comisionRaw = document.getElementById('pro-comision').value.replace(',', '.');
       const payloadPro = {
         nombre: document.getElementById('pro-nombre').value.trim(),
         apellido: document.getElementById('pro-apellido').value.trim(),
         correo_nuevo: document.getElementById('pro-correo').value.trim(),
         telefono_nuevo: document.getElementById('pro-telefono').value.trim(),
-        password: document.getElementById('pro-password').value,
         id_sucursal: idSucursalSeleccionada,
         especialidad: document.getElementById('pro-especialidad').value.trim(),
-        porcentaje_comision: parseFloat(comisionRaw) || 0.00,
+        porcentaje_comision: parseFloat(document.getElementById('pro-comision').value.replace(',', '.')) || 0.00,
         estado_laboral: 'ACTIVO'
       };
 
+      const passwordValue = document.getElementById('pro-password').value;
+      if (passwordValue) {
+        payloadPro.password = passwordValue;
+      }
+
       try {
-        const resPro = await fetch(`${API_BASE}/personal/profesionales/`, {
-          method: 'POST',
-          headers: getHeaders(),
-          body: JSON.stringify(payloadPro)
-        });
+        let resPro;
+        
+        if (profesionalEditandoId) {
+            // MODO EDICIÓN: Usamos el método PATCH
+            resPro = await fetch(`${API_BASE}/personal/profesionales/${profesionalEditandoId}/`, {
+              method: 'PATCH',
+              headers: getHeaders(),
+              body: JSON.stringify(payloadPro)
+            });
+        } else {
+            // MODO CREACIÓN: Usamos el método POST
+            if (!passwordValue) {
+              alert("La contraseña es obligatoria para registrar un nuevo profesional.");
+              return;
+            }
+            resPro = await fetch(`${API_BASE}/personal/profesionales/`, {
+              method: 'POST',
+              headers: getHeaders(),
+              body: JSON.stringify(payloadPro)
+            });
+        }
 
         const dataPro = await resPro.json();
 
         if (!resPro.ok) {
-          alert('Error al registrar profesional:\n' + JSON.stringify(dataPro, null, 2));
+          alert('Error al guardar:\n' + JSON.stringify(dataPro, null, 2));
           return;
         }
 
-        const proId = dataPro.id_profesional ?? dataPro.id;
-        const horaInicio = document.getElementById('pro-hora-inicio').value;
-        const horaFin = document.getElementById('pro-hora-fin').value;
-        const fixTime = (t) => (t && t.length === 5) ? `${t}:00` : t;
-        const horaInicioFix = fixTime(horaInicio);
-        const horaFinFix = fixTime(horaFin);
+        // Si es un profesional nuevo, le asignamos los horarios del checkbox
+        if (!profesionalEditandoId) {
+            const proId = dataPro.id_profesional ?? dataPro.id;
+            const fixTime = (t) => (t && t.length === 5) ? `${t}:00` : t;
+            const horaInicioFix = fixTime(document.getElementById('pro-hora-inicio').value);
+            const horaFinFix = fixTime(document.getElementById('pro-hora-fin').value);
 
-        const diasSeleccionados = Array.from(
-          document.querySelectorAll('input[name="pro-dias"]:checked')
-        ).map(cb => parseInt(cb.value));
+            const diasSeleccionados = Array.from(
+              document.querySelectorAll('input[name="pro-dias"]:checked')
+            ).map(cb => parseInt(cb.value));
 
-        for (const dia of diasSeleccionados) {
-          const payloadHorario = {
-            id_profesional: proId,
-            dia_semana: dia,
-            hora_inicio: horaInicioFix,
-            hora_fin: horaFinFix
-          };
-
-          const resHor = await fetch(`${API_BASE}/personal/horarios/`, {
-            method: 'POST',
-            headers: getHeaders(),
-            body: JSON.stringify(payloadHorario)
-          });
-
-          if (!resHor.ok) {
-            const errHor = await resHor.json().catch(() => ({}));
-            console.error(`Fallo horario día ${dia}:`, errHor);
-          }
+            for (const dia of diasSeleccionados) {
+              await fetch(`${API_BASE}/personal/horarios/`, {
+                method: 'POST',
+                headers: getHeaders(),
+                body: JSON.stringify({ id_profesional: proId, dia_semana: dia, hora_inicio: horaInicioFix, hora_fin: horaFinFix })
+              });
+            }
         }
 
         closeModal('modal-profesional');
         document.getElementById('form-profesional').reset();
-        await cargarProfesionales();
-        alert('¡Profesional y horarios registrados con éxito!');
+        alert(`¡Profesional ${profesionalEditandoId ? 'actualizado' : 'registrado'} con éxito!`);
+        
+        // Limpiamos el ID de edición y recargamos la tabla
+        profesionalEditandoId = null;
+        await cargarTodo();
 
       } catch (err) {
         alert('Fallo en la operación: ' + err.message);
@@ -733,7 +797,7 @@
       }
     }
 
-// Actualización manual de citas con feedback visual y anti-caché
+    // Actualización manual de citas
     async function actualizarCitasManual(btn) {
       const textoOriginal = btn.innerHTML;
       btn.disabled = true;
@@ -746,7 +810,7 @@
       }
 
       try {
-        const res = await fetch(`${API_BASE}/reservas/citas/?_t=${Date.now()}`, {
+        const res = await fetch(`${API_BASE}/citas/?_t=${Date.now()}`, {
           headers: getHeaders()
         });
 
