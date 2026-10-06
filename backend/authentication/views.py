@@ -167,7 +167,7 @@ class LoginView(APIView):
 
         return Response({
             "mensaje": "Inicio de sesión exitoso",
-            "usuario": usuario_data
+            "usuario": usuario_data,
             "usuario": usuario_data,
             "access": access_token 
         }, status=status.HTTP_200_OK)
