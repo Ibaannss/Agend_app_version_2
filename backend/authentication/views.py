@@ -127,7 +127,7 @@ class LoginView(APIView):
             "usuario": usuario_data,
             "access": access_token  # <-- 4. AHORA SÍ ENVIAMOS EL TOKEN A REACT NATIVE
         }, status=status.HTTP_200_OK)
-            return Response({"error": "Credenciales inválidas o cuenta inactiva."}, status=status.HTTP_401_UNAUTHORIZED)
+            
             
 
         user_pk = getattr(usuario, 'id_usuario', getattr(usuario, 'id', None))
