@@ -118,7 +118,7 @@
       const clienteId = usuario.id_usuario || usuario.id;
 
       try {
-        const res = await fetch(`https://agendapp-backend-djml.onrender.com/api/reservas/citas/?cliente=${clienteId}`);
+        const res = await fetch(`https://agendapp-backend-djml.onrender.com/api/citas/?cliente=${clienteId}`);
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
 
         const data = await res.json();
