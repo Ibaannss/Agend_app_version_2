@@ -41,8 +41,9 @@
   errorMsg.style.display = 'none';
 
   try {
-    // Apuntamos al endpoint existente en tu backend:
-   const res = await fetch('https://agendapp-backend-djml.onrender.com/api/usuarios/login/', {      method: 'POST',
+    // Apuntamos al endpoint existente en  backend:
+   const res = await fetch('https://agendapp-backend-djml.onrender.com/api/usuarios/login/',{      
+      method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ 
         correo: correo, 
