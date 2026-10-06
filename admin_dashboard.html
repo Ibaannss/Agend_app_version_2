@@ -362,40 +362,60 @@
     </div>
   </div>
 
-  <script>
+<script>
     const API_BASE = 'https://agendapp-backend-djml.onrender.com/api';
 
-    // 1. Control de Acceso
-    const rawSession = localStorage.getItem('usuario') || localStorage.getItem('agendapp_user');
-    const session = JSON.parse(rawSession || '{}');
-    const esAdmin = session.rol === 'ADMIN' || session.id_rol === 1;
-
-    if (!rawSession || !esAdmin) {
-      alert('Acceso restringido: requiere perfil de Administrador.');
-      window.location.href = 'login_roles.html';
+    // 1. Control de Sesión Blindado (Evita que la página colapse si hay basura en la memoria)
+    let session = {};
+    let esAdmin = false;
+    
+    try {
+        const rawSession = localStorage.getItem('usuario') || localStorage.getItem('agendapp_user');
+        if (rawSession && rawSession !== 'undefined' && rawSession !== 'null') {
+            session = JSON.parse(rawSession);
+            esAdmin = session.rol === 'ADMIN' || session.id_rol === 1;
+        }
+    } catch (error) {
+        console.warn("Memoria corrupta detectada. Forzando cierre de sesión.");
+        localStorage.clear();
     }
 
-    document.getElementById('adminInfo').innerHTML = `Sesión: <strong>${session.nombre || session.correo || 'Admin'}</strong>`;
+    if (!esAdmin) {
+      alert('Acceso restringido: requiere perfil de Administrador.');
+      window.location.href = 'login_roles.html';
+    } else {
+      const adminInfoElem = document.getElementById('adminInfo');
+      if (adminInfoElem) {
+          adminInfoElem.innerHTML = `Sesión: <strong>${session.nombre || session.correo || 'Admin'}</strong>`;
+      }
+    }
 
+    // 2. Variables Globales
     let cacheLocales = [];
     let epLocales = '/catalogos/sucursales/';
-
-    // VARIABLES GLOBALES PARA LA EDICIÓN DE DATOS
     let listaProfesionalesAdmin = [];
     let profesionalEditandoId = null;
-
     let listaServiciosAdmin = [];
     let servicioEditandoId = null;
 
+    // 3. Funciones de Interfaz
     function switchTab(e, tabId) {
       document.querySelectorAll('.tab-btn').forEach(btn => btn.classList.remove('active'));
       document.querySelectorAll('.tab-content').forEach(c => c.style.display = 'none');
       e.currentTarget.classList.add('active');
-      document.getElementById(tabId).style.display = 'block';
+      const tabTarget = document.getElementById(tabId);
+      if (tabTarget) tabTarget.style.display = 'block';
     }
 
-    function openModal(id) { document.getElementById(id).style.display = 'flex'; }
-    function closeModal(id) { document.getElementById(id).style.display = 'none'; }
+    function openModal(id) { 
+      const m = document.getElementById(id); 
+      if(m) m.style.display = 'flex'; 
+    }
+    
+    function closeModal(id) { 
+      const m = document.getElementById(id); 
+      if(m) m.style.display = 'none'; 
+    }
 
     const getHeaders = () => {
       const token = localStorage.getItem('token_access');
@@ -404,7 +424,7 @@
       return h;
     };
 
-    // 2. Fetch Inteligente para URLs de Django REST Framework
+    // 4. Peticiones Inteligentes
     async function fetchSmart(endpoints) {
       for (const ep of endpoints) {
         try {
@@ -413,21 +433,28 @@
             const data = await res.json();
             return { data: Array.isArray(data) ? data : (data.results || []), workingEndpoint: ep };
           }
-        } catch (e) {}
+        } catch (e) {
+            console.warn(`Fallo al intentar endpoint: ${ep}`);
+        }
       }
       return { data: [], workingEndpoint: endpoints[0] };
     }
 
-    // 3. Cargar Profesionales
+    // 5. Carga de Profesionales
     async function cargarProfesionales() {
       const tbody = document.getElementById('profesionales-body');
+      if (!tbody) return;
+
       try {
         const res = await fetch(`${API_BASE}/personal/profesionales/`, { headers: getHeaders() });
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
 
         const data = await res.json();
         const profesionales = Array.isArray(data) ? data : (data.results || []);
-        document.getElementById('kpi-profesionales').textContent = profesionales.length;
+        
+        const kpi = document.getElementById('kpi-profesionales');
+        if(kpi) kpi.textContent = profesionales.length;
+        
         listaProfesionalesAdmin = profesionales;
 
         if (profesionales.length === 0) {
@@ -439,7 +466,7 @@
           const proId = p.id_profesional ?? p.id;
           const listaHorarios = (p.horarios && p.horarios.length > 0)
             ? p.horarios.map(h => `${h.nombre_dia || 'Día'} (${(h.hora_inicio || '').slice(0,5)} - ${(h.hora_fin || '').slice(0,5)})`).join('<br>')
-            : '<span style="color:var(--text-muted);">Sin horarios asignados</span>';
+            : '<span style="color:var(--text-muted);">Sin horarios</span>';
           const nom = p.nombre_completo || `${p.nombre || 'Especialista'} ${p.apellido || ''}`;
           const sucursal = p.nombre_sucursal || 'Principal';
 
@@ -472,79 +499,101 @@
       if (!confirm(`¿Eliminar al profesional "${nombre}" (#${id})?`)) return;
       try {
         const res = await fetch(`${API_BASE}/personal/profesionales/${id}/`, { method: 'DELETE', headers: getHeaders() });
-        if (res.status === 204 || res.ok) { alert(`Eliminado con éxito.`); await cargarProfesionales(); }
-        else { alert('No se pudo eliminar.'); }
+        if (res.status === 204 || res.ok) { 
+            alert(`Eliminado con éxito.`); 
+            await cargarProfesionales(); 
+        } else { 
+            alert('No se pudo eliminar.'); 
+        }
       } catch (err) { alert('Error: ' + err.message); }
     }
 
-    // 4. Sincronización Integral del Dashboard
+    // 6. Sincronización Global
     async function cargarTodo() {
       await cargarProfesionales();
 
+      // Locales
       const resLoc = await fetchSmart(['/catalogos/sucursales/', '/catalogos/locales/', '/catalogos/sucursal/']);
       cacheLocales = resLoc.data || [];
       epLocales = resLoc.workingEndpoint;
-      document.getElementById('kpi-locales').textContent = cacheLocales.length;
+      
+      const kpiLoc = document.getElementById('kpi-locales');
+      if(kpiLoc) kpiLoc.textContent = cacheLocales.length;
 
-      document.getElementById('locales-body').innerHTML = cacheLocales.length ? cacheLocales.map(l => {
-        const estado = (l.activo === true || l.estado === true);
-        return `
-          <tr>
-            <td><strong>${l.nombre || l.nombre_comercial}</strong></td>
-            <td>${l.rut_empresa || l.rut || '-'}</td>
-            <td>${l.telefono || '-'}</td>
-            <td>${l.direccion || '-'}</td>
-            <td><span class="badge ${estado ? 'badge-success' : 'badge-danger'}">${estado ? 'Activo' : 'Inactivo'}</span></td>
-          </tr>
-        `;
-      }).join('') : '<tr><td colspan="5" style="text-align:center; color:var(--text-muted);">Sin sucursales registradas.</td></tr>';
+      const localesBody = document.getElementById('locales-body');
+      if(localesBody) {
+          localesBody.innerHTML = cacheLocales.length ? cacheLocales.map(l => {
+            const estado = (l.activo === true || l.estado === true);
+            return `
+              <tr>
+                <td><strong>${l.nombre || l.nombre_comercial}</strong></td>
+                <td>${l.rut_empresa || l.rut || '-'}</td>
+                <td>${l.telefono || '-'}</td>
+                <td>${l.direccion || '-'}</td>
+                <td><span class="badge ${estado ? 'badge-success' : 'badge-danger'}">${estado ? 'Activo' : 'Inactivo'}</span></td>
+              </tr>
+            `;
+          }).join('') : '<tr><td colspan="5" style="text-align:center; color:var(--text-muted);">Sin sucursales.</td></tr>';
+      }
 
       const optsLoc = cacheLocales.map(l => {
         const pk = l.id_sucursal ?? l.id_local ?? l.id ?? l.pk;
         return `<option value="${pk}">${l.nombre || l.nombre_comercial}</option>`;
       }).join('');
 
-      document.getElementById('srv-local').innerHTML = optsLoc;
-      document.getElementById('pro-local').innerHTML = optsLoc;
+      const srvLocal = document.getElementById('srv-local');
+      const proLocal = document.getElementById('pro-local');
+      if (srvLocal) srvLocal.innerHTML = optsLoc;
+      if (proLocal) proLocal.innerHTML = optsLoc;
 
-      // CARGAR SERVICIOS
+      // Servicios
       try {
         const resSrv = await fetchSmart(['/catalogos/servicios/', '/catalogos/servicio/']);
         const servicios = resSrv.data || [];
         listaServiciosAdmin = servicios;
-        document.getElementById('kpi-servicios').textContent = servicios.length;
+        
+        const kpiSrv = document.getElementById('kpi-servicios');
+        if(kpiSrv) kpiSrv.textContent = servicios.length;
 
-        document.getElementById('servicios-body').innerHTML = servicios.length ? servicios.map(s => {
-          const locId = s.id_sucursal_id || s.id_sucursal;
-          const loc = cacheLocales.find(l => (l.id_sucursal ?? l.id_local ?? l.id) === locId);
-          const sId = s.id_servicio ?? s.id;
-          return `
-            <tr>
-              <td><strong>${s.nombre}</strong></td>
-              <td>${s.nombre_sucursal || (loc ? (loc.nombre || loc.nombre_comercial) : 'Sucursal')}</td>
-              <td>$${Number(s.precio ?? s.precio_base ?? 0).toLocaleString('es-CL')}</td>
-              <td>${s.duracion_minutos ?? s.duracion_min ?? 0} min</td>
-              <td><span class="badge badge-success">${s.activo !== false ? 'Activo' : 'Inactivo'}</span></td>
-              <td style="text-align: right; display: flex; gap: 6px; justify-content: flex-end;">
-                <button class="btn-create" style="padding: 4px 8px; font-size: 11px; border-radius: 6px; background: #38bdf8; color: #0f141c;" onclick="editarServicio(${sId})">
-                  ✏️ Editar
-                </button>
-                <button class="btn-logout" style="padding: 4px 8px; font-size: 11px; border-radius: 6px;" onclick="eliminarServicio(${sId}, '${s.nombre}')">
-                  🗑️ Eliminar
-                </button>
-              </td>
-            </tr>
-          `;
-        }).join('') : '<tr><td colspan="6" style="text-align:center; color:var(--text-muted);">Sin servicios registrados.</td></tr>';
-      } catch (errSrv) {}
+        const srvBody = document.getElementById('servicios-body');
+        if(srvBody) {
+            srvBody.innerHTML = servicios.length ? servicios.map(s => {
+              const locId = s.id_sucursal_id || s.id_sucursal;
+              const loc = cacheLocales.find(l => (l.id_sucursal ?? l.id_local ?? l.id) === locId);
+              const sId = s.id_servicio ?? s.id;
+              return `
+                <tr>
+                  <td><strong>${s.nombre}</strong></td>
+                  <td>${s.nombre_sucursal || (loc ? (loc.nombre || loc.nombre_comercial) : 'Sucursal')}</td>
+                  <td>$${Number(s.precio ?? s.precio_base ?? 0).toLocaleString('es-CL')}</td>
+                  <td>${s.duracion_minutos ?? s.duracion_min ?? 0} min</td>
+                  <td><span class="badge badge-success">${s.activo !== false ? 'Activo' : 'Inactivo'}</span></td>
+                  <td style="text-align: right; display: flex; gap: 6px; justify-content: flex-end;">
+                    <button class="btn-create" style="padding: 4px 8px; font-size: 11px; border-radius: 6px; background: #38bdf8; color: #0f141c;" onclick="editarServicio(${sId})">
+                      ✏️ Editar
+                    </button>
+                    <button class="btn-logout" style="padding: 4px 8px; font-size: 11px; border-radius: 6px;" onclick="eliminarServicio(${sId}, '${s.nombre}')">
+                      🗑️ Eliminar
+                    </button>
+                  </td>
+                </tr>
+              `;
+            }).join('') : '<tr><td colspan="6" style="text-align:center; color:var(--text-muted);">Sin servicios.</td></tr>';
+        }
+      } catch (errSrv) {
+          console.warn(errSrv);
+      }
 
-      // CARGAR CITAS
+      // Citas
       try {
         const resCitas = await fetchSmart(['/citas/', '/reservas/citas/', '/reservas/cita/']);
         const citas = resCitas.data || [];
-        document.getElementById('kpi-citas').textContent = citas.length;
-        if (document.getElementById('citas-body')) {
-          document.getElementById('citas-body').innerHTML = citas.length ? citas.map(c => `
+        const kpiCitas = document.getElementById('kpi-citas');
+        if (kpiCitas) kpiCitas.textContent = citas.length;
+        
+        const citasBody = document.getElementById('citas-body');
+        if (citasBody) {
+          citasBody.innerHTML = citas.length ? citas.map(c => `
               <tr>
                 <td><strong>#${c.id_cita ?? c.id}</strong></td>
                 <td>${c.cliente_nombre || c.nombre_cliente || 'Cliente'}</td>
@@ -555,10 +604,12 @@
               </tr>
             `).join('') : '<tr><td colspan="6" style="text-align:center; color:var(--text-muted);">Sin citas.</td></tr>';
         }
-      } catch (errCitas) {}
+      } catch (errCitas) {
+          console.warn(errCitas);
+      }
     }
 
-    // 5. Gestión de PROFESIONALES (CREAR y EDITAR)
+    // 7. Modales y Guardado
     function abrirModalNuevoProfesional() {
         profesionalEditandoId = null;
         document.getElementById('form-profesional').reset();
@@ -623,7 +674,6 @@
       } catch (err) { alert('Fallo: ' + err.message); }
     }
 
-    // 6. Gestión de SERVICIOS (CREAR, EDITAR y ELIMINAR)
     function abrirModalNuevoServicio() {
         servicioEditandoId = null;
         document.getElementById('form-servicio').reset();
@@ -681,7 +731,6 @@
       } catch (err) { alert('Fallo de conexión.'); }
     }
 
-    // 7. Guardar Sucursal
     async function guardarLocal(e) {
       e.preventDefault();
       const payload = {
@@ -706,6 +755,7 @@
 
     function logout() { localStorage.clear(); window.location.href = 'login_roles.html'; }
 
+    // Iniciar
     cargarTodo();
   </script>
 </body>
