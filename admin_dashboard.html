@@ -156,7 +156,7 @@
   <section id="tab-servicios" class="content-card tab-content" style="display:none;">
     <div class="table-header">
       <h2>Catálogo de Servicios</h2>
-      <button class="btn-create" onclick="openModal('modal-servicio')">+ Nuevo Servicio</button>
+      <button class="btn-create" onclick="abrirModalNuevoServicio()">+ Nuevo Servicio</button>
     </div>
     <table>
       <thead>
@@ -166,10 +166,11 @@
           <th>Precio Base</th>
           <th>Duración</th>
           <th>Estado</th>
+          <th style="text-align: right;">Acciones</th>
         </tr>
       </thead>
       <tbody id="servicios-body">
-        <tr><td colspan="5" style="text-align:center; color:var(--text-muted);">Cargando servicios...</td></tr>
+        <tr><td colspan="6" style="text-align:center; color:var(--text-muted);">Cargando servicios...</td></tr>
       </tbody>
     </table>
   </section>
@@ -283,7 +284,6 @@
             </div>
           </div>
         </div>
-
         <div class="modal-footer">
           <button type="button" class="btn-secondary" onclick="closeModal('modal-profesional')">Cancelar</button>
           <button type="submit" class="btn-create">Guardar Profesional</button>
@@ -292,7 +292,7 @@
     </div>
   </div>
 
-  <!-- MODAL: REGISTRAR SERVICIO -->
+  <!-- MODAL: REGISTRAR/EDITAR SERVICIO -->
   <div id="modal-servicio" class="modal">
     <div class="modal-box">
       <h3>Registrar Nuevo Servicio</h3>
@@ -380,9 +380,12 @@
     let cacheLocales = [];
     let epLocales = '/catalogos/sucursales/';
 
-    // NUEVAS VARIABLES GLOBALES PARA LA EDICIÓN DE PROFESIONALES
+    // VARIABLES GLOBALES PARA LA EDICIÓN DE DATOS
     let listaProfesionalesAdmin = [];
     let profesionalEditandoId = null;
+
+    let listaServiciosAdmin = [];
+    let servicioEditandoId = null;
 
     function switchTab(e, tabId) {
       document.querySelectorAll('.tab-btn').forEach(btn => btn.classList.remove('active'));
@@ -415,7 +418,7 @@
       return { data: [], workingEndpoint: endpoints[0] };
     }
 
-    // 3. Cargar Profesionales con sus horarios y botones de acción
+    // 3. Cargar Profesionales
     async function cargarProfesionales() {
       const tbody = document.getElementById('profesionales-body');
       try {
@@ -425,8 +428,6 @@
         const data = await res.json();
         const profesionales = Array.isArray(data) ? data : (data.results || []);
         document.getElementById('kpi-profesionales').textContent = profesionales.length;
-
-        // Almacenamos los datos en la variable global para poder rellenar el formulario al editar
         listaProfesionalesAdmin = profesionales;
 
         if (profesionales.length === 0) {
@@ -439,7 +440,6 @@
           const listaHorarios = (p.horarios && p.horarios.length > 0)
             ? p.horarios.map(h => `${h.nombre_dia || 'Día'} (${(h.hora_inicio || '').slice(0,5)} - ${(h.hora_fin || '').slice(0,5)})`).join('<br>')
             : '<span style="color:var(--text-muted);">Sin horarios asignados</span>';
-
           const nom = p.nombre_completo || `${p.nombre || 'Especialista'} ${p.apellido || ''}`;
           const sucursal = p.nombre_sucursal || 'Principal';
 
@@ -464,32 +464,17 @@
           `;
         }).join('');
       } catch (err) {
-        tbody.innerHTML = `<tr><td colspan="8" style="color:var(--danger); text-align:center;">Error al cargar profesionales: ${err.message}</td></tr>`;
+        tbody.innerHTML = `<tr><td colspan="8" style="color:var(--danger); text-align:center;">Error: ${err.message}</td></tr>`;
       }
     }
 
     async function eliminarProfesional(id, nombre) {
-      if (!confirm(`¿Estás seguro de que deseas eliminar al profesional "${nombre}" (#${id})?\n\nEsta acción eliminará su registro y sus horarios asignados.`)) {
-        return;
-      }
-
+      if (!confirm(`¿Eliminar al profesional "${nombre}" (#${id})?`)) return;
       try {
-        const res = await fetch(`${API_BASE}/personal/profesionales/${id}/`, {
-          method: 'DELETE',
-          headers: getHeaders()
-        });
-
-        if (res.status === 204 || res.ok) {
-          alert(`Profesional "${nombre}" eliminado con éxito.`);
-          await cargarProfesionales();
-        } else {
-          const errData = await res.json().catch(() => ({}));
-          alert(`No se pudo eliminar el profesional:\n${JSON.stringify(errData, null, 2)}`);
-        }
-      } catch (err) {
-        console.error('Error al eliminar profesional:', err);
-        alert('Error de conexión al eliminar: ' + err.message);
-      }
+        const res = await fetch(`${API_BASE}/personal/profesionales/${id}/`, { method: 'DELETE', headers: getHeaders() });
+        if (res.status === 204 || res.ok) { alert(`Eliminado con éxito.`); await cargarProfesionales(); }
+        else { alert('No se pudo eliminar.'); }
+      } catch (err) { alert('Error: ' + err.message); }
     }
 
     // 4. Sincronización Integral del Dashboard
@@ -502,13 +487,11 @@
       document.getElementById('kpi-locales').textContent = cacheLocales.length;
 
       document.getElementById('locales-body').innerHTML = cacheLocales.length ? cacheLocales.map(l => {
-        const nombre = l.nombre || l.nombre_comercial || 'Sucursal';
-        const rut = l.rut_empresa || l.rut || '-';
         const estado = (l.activo === true || l.estado === true);
         return `
           <tr>
-            <td><strong>${nombre}</strong></td>
-            <td>${rut}</td>
+            <td><strong>${l.nombre || l.nombre_comercial}</strong></td>
+            <td>${l.rut_empresa || l.rut || '-'}</td>
             <td>${l.telefono || '-'}</td>
             <td>${l.direccion || '-'}</td>
             <td><span class="badge ${estado ? 'badge-success' : 'badge-danger'}">${estado ? 'Activo' : 'Inactivo'}</span></td>
@@ -518,220 +501,164 @@
 
       const optsLoc = cacheLocales.map(l => {
         const pk = l.id_sucursal ?? l.id_local ?? l.id ?? l.pk;
-        const nombre = l.nombre || l.nombre_comercial || `Sucursal #${pk}`;
-        return `<option value="${pk}">${nombre}</option>`;
+        return `<option value="${pk}">${l.nombre || l.nombre_comercial}</option>`;
       }).join('');
 
-      const selSrv = document.getElementById('srv-local');
-      const selPro = document.getElementById('pro-local');
-      if (selSrv) selSrv.innerHTML = optsLoc;
-      if (selPro) selPro.innerHTML = optsLoc;
+      document.getElementById('srv-local').innerHTML = optsLoc;
+      document.getElementById('pro-local').innerHTML = optsLoc;
 
+      // CARGAR SERVICIOS
       try {
         const resSrv = await fetchSmart(['/catalogos/servicios/', '/catalogos/servicio/']);
         const servicios = resSrv.data || [];
+        listaServiciosAdmin = servicios;
         document.getElementById('kpi-servicios').textContent = servicios.length;
 
         document.getElementById('servicios-body').innerHTML = servicios.length ? servicios.map(s => {
           const locId = s.id_sucursal_id || s.id_sucursal;
           const loc = cacheLocales.find(l => (l.id_sucursal ?? l.id_local ?? l.id) === locId);
-          const sucursalNombre = s.nombre_sucursal || (loc ? (loc.nombre || loc.nombre_comercial) : 'Sucursal');
-          const precio = s.precio ?? s.precio_base ?? 0;
-          const duracion = s.duracion_minutos ?? s.duracion_min ?? 0;
-
+          const sId = s.id_servicio ?? s.id;
           return `
             <tr>
               <td><strong>${s.nombre}</strong></td>
-              <td>${sucursalNombre}</td>
-              <td>$${Number(precio).toLocaleString('es-CL')}</td>
-              <td>${duracion} min</td>
+              <td>${s.nombre_sucursal || (loc ? (loc.nombre || loc.nombre_comercial) : 'Sucursal')}</td>
+              <td>$${Number(s.precio ?? s.precio_base ?? 0).toLocaleString('es-CL')}</td>
+              <td>${s.duracion_minutos ?? s.duracion_min ?? 0} min</td>
               <td><span class="badge badge-success">${s.activo !== false ? 'Activo' : 'Inactivo'}</span></td>
+              <td style="text-align: right; display: flex; gap: 6px; justify-content: flex-end;">
+                <button class="btn-create" style="padding: 4px 8px; font-size: 11px; border-radius: 6px; background: #38bdf8; color: #0f141c;" onclick="editarServicio(${sId})">
+                  ✏️ Editar
+                </button>
+                <button class="btn-logout" style="padding: 4px 8px; font-size: 11px; border-radius: 6px;" onclick="eliminarServicio(${sId}, '${s.nombre}')">
+                  🗑️ Eliminar
+                </button>
+              </td>
             </tr>
           `;
-        }).join('') : '<tr><td colspan="5" style="text-align:center; color:var(--text-muted);">Sin servicios registrados.</td></tr>';
-      } catch (errSrv) {
-        console.error('Error al cargar servicios:', errSrv);
-        document.getElementById('servicios-body').innerHTML = `<tr><td colspan="5" style="text-align:center; color:var(--danger);">Error al cargar servicios: ${errSrv.message}</td></tr>`;
-      }
+        }).join('') : '<tr><td colspan="6" style="text-align:center; color:var(--text-muted);">Sin servicios registrados.</td></tr>';
+      } catch (errSrv) {}
 
+      // CARGAR CITAS
       try {
         const resCitas = await fetchSmart(['/citas/', '/reservas/citas/', '/reservas/cita/']);
         const citas = resCitas.data || [];
         document.getElementById('kpi-citas').textContent = citas.length;
-
-        const citasBody = document.getElementById('citas-body');
-        if (citasBody) {
-          citasBody.innerHTML = citas.length ? citas.map(c => {
-            const cliente = c.cliente_nombre || c.nombre_cliente || (c.id_cliente ? `Cliente #${c.id_cliente}` : 'Cliente');
-            const servicio = c.servicio_nombre || c.nombre_servicio || (c.id_servicio ? `Servicio #${c.id_servicio}` : 'Servicio');
-            const profesional = c.profesional_nombre || c.nombre_profesional || (c.id_profesional ? `Profesional #${c.id_profesional}` : 'Especialista');
-            const fechaStr = c.fecha_hora_inicio ? c.fecha_hora_inicio.replace('T', ' ').substring(0, 16) : '-';
-            const estado = c.estado || 'CONFIRMADA';
-
-            return `
+        if (document.getElementById('citas-body')) {
+          document.getElementById('citas-body').innerHTML = citas.length ? citas.map(c => `
               <tr>
                 <td><strong>#${c.id_cita ?? c.id}</strong></td>
-                <td>${cliente}</td>
-                <td>${servicio}</td>
-                <td>${profesional}</td>
-                <td>${fechaStr}</td>
-                <td><span class="badge badge-info">${estado}</span></td>
+                <td>${c.cliente_nombre || c.nombre_cliente || 'Cliente'}</td>
+                <td>${c.servicio_nombre || c.nombre_servicio || 'Servicio'}</td>
+                <td>${c.profesional_nombre || c.nombre_profesional || 'Especialista'}</td>
+                <td>${c.fecha_hora_inicio ? c.fecha_hora_inicio.replace('T', ' ').substring(0, 16) : '-'}</td>
+                <td><span class="badge badge-info">${c.estado || 'CONFIRMADA'}</span></td>
               </tr>
-            `;
-          }).join('') : '<tr><td colspan="6" style="text-align:center; color:var(--text-muted);">Sin citas registradas.</td></tr>';
+            `).join('') : '<tr><td colspan="6" style="text-align:center; color:var(--text-muted);">Sin citas.</td></tr>';
         }
-      } catch (errCitas) {
-        console.error('Error al cargar citas:', errCitas);
-      }
+      } catch (errCitas) {}
     }
 
-    // 5. Gestión del Modal Inteligente de Profesionales (CREAR y EDITAR)
+    // 5. Gestión de PROFESIONALES (CREAR y EDITAR)
     function abrirModalNuevoProfesional() {
         profesionalEditandoId = null;
         document.getElementById('form-profesional').reset();
-        
-        // Configuramos la vista para CREACIÓN
         document.getElementById('pro-password').required = true;
         document.getElementById('pro-password').placeholder = "••••••••";
-        document.querySelector('#modal-profesional h3').textContent = "Registrar Profesional y Asignar Horarios";
+        document.querySelector('#modal-profesional h3').textContent = "Registrar Profesional";
         document.querySelector('#form-profesional .btn-create').textContent = "Guardar Profesional";
-        document.getElementById('seccion-horarios').style.display = 'block'; // Mostrar la sección de horarios
-        
+        document.getElementById('seccion-horarios').style.display = 'block'; 
         openModal('modal-profesional');
     }
 
     function editarProfesional(id) {
         const pro = listaProfesionalesAdmin.find(p => (p.id_profesional ?? p.id) === id);
         if (!pro) return;
-
         profesionalEditandoId = id;
-
-        // Rellenar los campos del modal con los datos del profesional seleccionado
         document.getElementById('pro-nombre').value = pro.nombre || pro.usuario?.nombre || '';
         document.getElementById('pro-apellido').value = pro.apellido || pro.usuario?.apellido || '';
         document.getElementById('pro-correo').value = pro.correo || pro.usuario?.correo || '';
         document.getElementById('pro-telefono').value = pro.telefono || pro.usuario?.telefono || '';
         document.getElementById('pro-especialidad').value = pro.especialidad || '';
         document.getElementById('pro-comision').value = pro.porcentaje_comision || '0.00';
-        
-        const selectLocal = document.getElementById('pro-local');
-        if (selectLocal) {
-            const sucId = pro.id_sucursal?.id_sucursal ?? pro.id_sucursal ?? pro.id_sucursal_id;
-            selectLocal.value = sucId || '';
-        }
-
-        // Configuramos la vista para EDICIÓN
+        document.getElementById('pro-local').value = pro.id_sucursal?.id_sucursal ?? pro.id_sucursal ?? pro.id_sucursal_id || '';
         document.getElementById('pro-password').required = false;
-        document.getElementById('pro-password').placeholder = "(Dejar en blanco para no cambiar la clave)";
-        document.querySelector('#modal-profesional h3').textContent = "Editar Datos del Profesional";
+        document.getElementById('pro-password').placeholder = "(Dejar en blanco para no cambiar)";
+        document.querySelector('#modal-profesional h3').textContent = "Editar Profesional";
         document.querySelector('#form-profesional .btn-create').textContent = "Guardar Cambios";
-        document.getElementById('seccion-horarios').style.display = 'none'; // Ocultar horarios al editar
-
+        document.getElementById('seccion-horarios').style.display = 'none';
         openModal('modal-profesional');
     }
 
     async function guardarProfesional(e) {
       e.preventDefault();
+      const idSucursal = parseInt(document.getElementById('pro-local').value);
+      if (!idSucursal) { alert('Selecciona una sucursal.'); return; }
 
-      const selectLocal = document.getElementById('pro-local');
-      const idSucursalSeleccionada = selectLocal && selectLocal.value ? parseInt(selectLocal.value) : null;
-
-      if (!idSucursalSeleccionada) {
-        alert('Por favor selecciona una sucursal válida.');
-        return;
-      }
-
-      const payloadPro = {
+      const payload = {
         nombre: document.getElementById('pro-nombre').value.trim(),
         apellido: document.getElementById('pro-apellido').value.trim(),
         correo_nuevo: document.getElementById('pro-correo').value.trim(),
         telefono_nuevo: document.getElementById('pro-telefono').value.trim(),
-        id_sucursal: idSucursalSeleccionada,
+        id_sucursal: idSucursal,
         especialidad: document.getElementById('pro-especialidad').value.trim(),
         porcentaje_comision: parseFloat(document.getElementById('pro-comision').value.replace(',', '.')) || 0.00,
         estado_laboral: 'ACTIVO'
       };
 
-      const passwordValue = document.getElementById('pro-password').value;
-      if (passwordValue) {
-        payloadPro.password = passwordValue;
-      }
+      const pass = document.getElementById('pro-password').value;
+      if (pass) payload.password = pass;
 
       try {
-        let resPro;
+        const url = profesionalEditandoId ? `${API_BASE}/personal/profesionales/${profesionalEditandoId}/` : `${API_BASE}/personal/profesionales/`;
+        const method = profesionalEditandoId ? 'PATCH' : 'POST';
         
-        if (profesionalEditandoId) {
-            // MODO EDICIÓN: Usamos el método PATCH
-            resPro = await fetch(`${API_BASE}/personal/profesionales/${profesionalEditandoId}/`, {
-              method: 'PATCH',
-              headers: getHeaders(),
-              body: JSON.stringify(payloadPro)
-            });
-        } else {
-            // MODO CREACIÓN: Usamos el método POST
-            if (!passwordValue) {
-              alert("La contraseña es obligatoria para registrar un nuevo profesional.");
-              return;
-            }
-            resPro = await fetch(`${API_BASE}/personal/profesionales/`, {
-              method: 'POST',
-              headers: getHeaders(),
-              body: JSON.stringify(payloadPro)
-            });
-        }
-
-        const dataPro = await resPro.json();
-
-        if (!resPro.ok) {
-          alert('Error al guardar:\n' + JSON.stringify(dataPro, null, 2));
-          return;
-        }
-
-        // Si es un profesional nuevo, le asignamos los horarios del checkbox
-        if (!profesionalEditandoId) {
-            const proId = dataPro.id_profesional ?? dataPro.id;
-            const fixTime = (t) => (t && t.length === 5) ? `${t}:00` : t;
-            const horaInicioFix = fixTime(document.getElementById('pro-hora-inicio').value);
-            const horaFinFix = fixTime(document.getElementById('pro-hora-fin').value);
-
-            const diasSeleccionados = Array.from(
-              document.querySelectorAll('input[name="pro-dias"]:checked')
-            ).map(cb => parseInt(cb.value));
-
-            for (const dia of diasSeleccionados) {
-              await fetch(`${API_BASE}/personal/horarios/`, {
-                method: 'POST',
-                headers: getHeaders(),
-                body: JSON.stringify({ id_profesional: proId, dia_semana: dia, hora_inicio: horaInicioFix, hora_fin: horaFinFix })
-              });
-            }
-        }
-
+        if (!profesionalEditandoId && !pass) { alert("La clave es obligatoria al crear."); return; }
+        
+        const res = await fetch(url, { method, headers: getHeaders(), body: JSON.stringify(payload) });
+        if (!res.ok) { alert('Error al guardar.'); return; }
+        
         closeModal('modal-profesional');
-        document.getElementById('form-profesional').reset();
-        alert(`¡Profesional ${profesionalEditandoId ? 'actualizado' : 'registrado'} con éxito!`);
-        
-        // Limpiamos el ID de edición y recargamos la tabla
         profesionalEditandoId = null;
         await cargarTodo();
-
-      } catch (err) {
-        alert('Fallo en la operación: ' + err.message);
-      }
+      } catch (err) { alert('Fallo: ' + err.message); }
     }
 
-    // 6. Guardar Servicio
+    // 6. Gestión de SERVICIOS (CREAR, EDITAR y ELIMINAR)
+    function abrirModalNuevoServicio() {
+        servicioEditandoId = null;
+        document.getElementById('form-servicio').reset();
+        document.querySelector('#modal-servicio h3').textContent = "Registrar Nuevo Servicio";
+        document.querySelector('#form-servicio .btn-create').textContent = "Guardar Servicio";
+        openModal('modal-servicio');
+    }
+
+    function editarServicio(id) {
+        const srv = listaServiciosAdmin.find(s => (s.id_servicio ?? s.id) === id);
+        if (!srv) return;
+        servicioEditandoId = id;
+        document.getElementById('srv-nombre').value = srv.nombre || '';
+        document.getElementById('srv-desc').value = srv.descripcion || '';
+        document.getElementById('srv-precio').value = srv.precio ?? srv.precio_base ?? 0;
+        document.getElementById('srv-duracion').value = srv.duracion_minutos ?? srv.duracion_min ?? 0;
+        document.getElementById('srv-local').value = srv.id_sucursal_id ?? srv.id_sucursal ?? '';
+        document.querySelector('#modal-servicio h3').textContent = "Editar Servicio";
+        document.querySelector('#form-servicio .btn-create').textContent = "Guardar Cambios";
+        openModal('modal-servicio');
+    }
+
+    async function eliminarServicio(id, nombre) {
+        if (!confirm(`¿Eliminar el servicio "${nombre}"?`)) return;
+        try {
+            const res = await fetch(`${API_BASE}/catalogos/servicios/${id}/`, { method: 'DELETE', headers: getHeaders() });
+            if (res.ok || res.status === 204) { alert('Eliminado.'); await cargarTodo(); }
+            else { alert('No se pudo eliminar.'); }
+        } catch (e) { alert('Error: ' + e.message); }
+    }
+
     async function guardarServicio(e) {
       e.preventDefault();
-
-      const selectLocal = document.getElementById('srv-local');
-      const rawVal = selectLocal ? selectLocal.value : null;
-      const idSucursal = (rawVal && !isNaN(parseInt(rawVal))) ? parseInt(rawVal) : null;
-
-      if (!idSucursal) {
-        alert('Por favor selecciona una sucursal válida.');
-        return;
-      }
+      const idSucursal = parseInt(document.getElementById('srv-local').value);
+      if (!idSucursal) { alert('Selecciona una sucursal.'); return; }
 
       const payload = {
         id_sucursal: idSucursal,
@@ -743,25 +670,15 @@
       };
 
       try {
-        const res = await fetch(`${API_BASE}/catalogos/servicios/`, {
-          method: 'POST',
-          headers: getHeaders(),
-          body: JSON.stringify(payload)
-        });
-
-        const data = await res.json().catch(() => ({}));
-
+        const url = servicioEditandoId ? `${API_BASE}/catalogos/servicios/${servicioEditandoId}/` : `${API_BASE}/catalogos/servicios/`;
+        const method = servicioEditandoId ? 'PATCH' : 'POST';
+        const res = await fetch(url, { method, headers: getHeaders(), body: JSON.stringify(payload) });
         if (res.ok) {
           closeModal('modal-servicio');
-          document.getElementById('form-servicio').reset();
+          servicioEditandoId = null;
           await cargarTodo();
-          alert('¡Servicio registrado con éxito!');
-        } else {
-          alert('Error devuelto por el backend:\n' + JSON.stringify(data, null, 2));
-        }
-      } catch (err) {
-        alert('Fallo de conexión: ' + err.message);
-      }
+        } else { alert('Error del backend.'); }
+      } catch (err) { alert('Fallo de conexión.'); }
     }
 
     // 7. Guardar Sucursal
@@ -775,90 +692,20 @@
         direccion: document.getElementById('loc-direccion').value.trim(),
         activo: true
       };
-
       try {
-        const res = await fetch(`${API_BASE}${epLocales}`, {
-          method: 'POST',
-          headers: getHeaders(),
-          body: JSON.stringify(payload)
-        });
-
-        if (res.ok) {
-          closeModal('modal-local');
-          document.getElementById('form-local').reset();
-          await cargarTodo();
-          alert('¡Sucursal creada exitosamente!');
-        } else {
-          const errData = await res.json().catch(() => ({}));
-          alert('Error al registrar la sucursal:\n' + JSON.stringify(errData, null, 2));
-        }
-      } catch (err) {
-        alert('Error en la petición: ' + err.message);
-      }
+        const res = await fetch(`${API_BASE}${epLocales}`, { method: 'POST', headers: getHeaders(), body: JSON.stringify(payload) });
+        if (res.ok) { closeModal('modal-local'); await cargarTodo(); }
+      } catch (err) {}
     }
 
-    // Actualización manual de citas
     async function actualizarCitasManual(btn) {
-      const textoOriginal = btn.innerHTML;
-      btn.disabled = true;
-      btn.innerHTML = '⏳ Actualizando...';
-      btn.style.opacity = '0.7';
-
-      const tbody = document.getElementById('citas-body');
-      if (tbody) {
-        tbody.style.opacity = '0.5';
-      }
-
-      try {
-        const res = await fetch(`${API_BASE}/citas/?_t=${Date.now()}`, {
-          headers: getHeaders()
-        });
-
-        if (res.ok) {
-          const data = await res.json();
-          const citas = Array.isArray(data) ? data : (data.results || []);
-          document.getElementById('kpi-citas').textContent = citas.length;
-
-          if (tbody) {
-            tbody.innerHTML = citas.length ? citas.map(c => {
-              const cliente = c.cliente_nombre || c.nombre_cliente || (c.id_cliente ? `Cliente #${c.id_cliente}` : 'Cliente');
-              const servicio = c.servicio_nombre || c.nombre_servicio || (c.id_servicio ? `Servicio #${c.id_servicio}` : 'Servicio');
-              const profesional = c.profesional_nombre || c.nombre_profesional || (c.id_profesional ? `Profesional #${c.id_profesional}` : 'Especialista');
-              const fechaStr = c.fecha_hora_inicio ? c.fecha_hora_inicio.replace('T', ' ').substring(0, 16) : '-';
-              const estado = c.estado || 'CONFIRMADA';
-
-              return `
-                <tr>
-                  <td><strong>#${c.id_cita ?? c.id}</strong></td>
-                  <td>${cliente}</td>
-                  <td>${servicio}</td>
-                  <td>${profesional}</td>
-                  <td>${fechaStr}</td>
-                  <td><span class="badge badge-info">${estado}</span></td>
-                </tr>
-              `;
-            }).join('') : '<tr><td colspan="6" style="text-align:center; color:var(--text-muted);">Sin citas registradas.</td></tr>';
-          }
-        }
-      } catch (err) {
-        console.error('Error al actualizar citas:', err);
-      } finally {
-        if (tbody) tbody.style.opacity = '1';
-        btn.disabled = false;
-        btn.innerHTML = '✅ Actualizado';
-        btn.style.opacity = '1';
-        setTimeout(() => {
-          btn.innerHTML = textoOriginal;
-        }, 1200);
-      }
+      const txt = btn.innerHTML; btn.disabled = true; btn.innerHTML = '⏳...';
+      await cargarTodo();
+      btn.innerHTML = '✅ Listo'; setTimeout(() => { btn.innerHTML = txt; btn.disabled = false; }, 1000);
     }
 
-    function logout() {
-      localStorage.clear();
-      window.location.href = 'login_roles.html';
-    }
+    function logout() { localStorage.clear(); window.location.href = 'login_roles.html'; }
 
-    // Inicializar dashboard
     cargarTodo();
   </script>
 </body>
