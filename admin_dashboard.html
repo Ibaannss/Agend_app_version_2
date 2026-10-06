@@ -86,13 +86,18 @@
 </head>
 <body>
 
+  <!-- Alerta de Errores Globales (Oculta por defecto) -->
+  <div id="error-fatal" style="display:none; position:fixed; top:0; left:0; width:100%; background:#ef4444; color:white; padding:15px; font-weight:bold; z-index:9999; text-align:center;">
+    <span id="error-fatal-text"></span>
+  </div>
+
   <header class="navbar">
     <div class="brand">
       <h1><span>Agend</span>App</h1>
       <span class="badge-admin">Administrador</span>
     </div>
     <div class="user-actions">
-      <span id="adminInfo">Sesión: <strong>Administrador</strong></span>
+      <span id="adminInfo">Sesión: <strong>Cargando...</strong></span>
       <button class="btn-logout" onclick="logout()">Cerrar Sesión</button>
     </div>
   </header>
@@ -362,35 +367,19 @@
     </div>
   </div>
 
-<script>
+  <script>
+    // Atrapador de Errores Globales (Si algo falla, lo mostrará en rojo en pantalla)
+    window.addEventListener('error', function(e) {
+      const errDiv = document.getElementById('error-fatal');
+      if (errDiv) {
+        errDiv.style.display = 'block';
+        document.getElementById('error-fatal-text').innerText = 'Fallo de Script: ' + e.message;
+      }
+    });
+
     const API_BASE = 'https://agendapp-backend-djml.onrender.com/api';
 
-    // 1. Control de Sesión Blindado (Evita que la página colapse si hay basura en la memoria)
-    let session = {};
-    let esAdmin = false;
-    
-    try {
-        const rawSession = localStorage.getItem('usuario') || localStorage.getItem('agendapp_user');
-        if (rawSession && rawSession !== 'undefined' && rawSession !== 'null') {
-            session = JSON.parse(rawSession);
-            esAdmin = session.rol === 'ADMIN' || session.id_rol === 1;
-        }
-    } catch (error) {
-        console.warn("Memoria corrupta detectada. Forzando cierre de sesión.");
-        localStorage.clear();
-    }
-
-    if (!esAdmin) {
-      alert('Acceso restringido: requiere perfil de Administrador.');
-      window.location.href = 'login_roles.html';
-    } else {
-      const adminInfoElem = document.getElementById('adminInfo');
-      if (adminInfoElem) {
-          adminInfoElem.innerHTML = `Sesión: <strong>${session.nombre || session.correo || 'Admin'}</strong>`;
-      }
-    }
-
-    // 2. Variables Globales
+    // Variables Globales
     let cacheLocales = [];
     let epLocales = '/catalogos/sucursales/';
     let listaProfesionalesAdmin = [];
@@ -398,7 +387,7 @@
     let listaServiciosAdmin = [];
     let servicioEditandoId = null;
 
-    // 3. Funciones de Interfaz
+    // Funciones de Interfaz Básicas
     function switchTab(e, tabId) {
       document.querySelectorAll('.tab-btn').forEach(btn => btn.classList.remove('active'));
       document.querySelectorAll('.tab-content').forEach(c => c.style.display = 'none');
@@ -420,34 +409,38 @@
     const getHeaders = () => {
       const token = localStorage.getItem('token_access');
       const h = { 'Content-Type': 'application/json' };
-      if (token) h['Authorization'] = `Bearer ${token}`;
+      if (token) h['Authorization'] = 'Bearer ' + token;
       return h;
     };
 
-    // 4. Peticiones Inteligentes
+    function logout() { 
+        localStorage.clear(); 
+        window.location.href = 'login_roles.html'; 
+    }
+
     async function fetchSmart(endpoints) {
-      for (const ep of endpoints) {
+      for (let i = 0; i < endpoints.length; i++) {
         try {
-          const res = await fetch(`${API_BASE}${ep}`, { headers: getHeaders() });
+          const res = await fetch(API_BASE + endpoints[i], { headers: getHeaders() });
           if (res.ok) {
             const data = await res.json();
-            return { data: Array.isArray(data) ? data : (data.results || []), workingEndpoint: ep };
+            return { data: Array.isArray(data) ? data : (data.results || []), workingEndpoint: endpoints[i] };
           }
         } catch (e) {
-            console.warn(`Fallo al intentar endpoint: ${ep}`);
+            console.warn("Fallo endpoint: " + endpoints[i]);
         }
       }
       return { data: [], workingEndpoint: endpoints[0] };
     }
 
-    // 5. Carga de Profesionales
+    // Lógica Central
     async function cargarProfesionales() {
       const tbody = document.getElementById('profesionales-body');
       if (!tbody) return;
 
       try {
-        const res = await fetch(`${API_BASE}/personal/profesionales/`, { headers: getHeaders() });
-        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        const res = await fetch(API_BASE + '/personal/profesionales/', { headers: getHeaders() });
+        if (!res.ok) throw new Error("HTTP " + res.status);
 
         const data = await res.json();
         const profesionales = Array.isArray(data) ? data : (data.results || []);
@@ -462,57 +455,47 @@
           return;
         }
 
-        tbody.innerHTML = profesionales.map(p => {
-          const proId = p.id_profesional ?? p.id;
-          const listaHorarios = (p.horarios && p.horarios.length > 0)
-            ? p.horarios.map(h => `${h.nombre_dia || 'Día'} (${(h.hora_inicio || '').slice(0,5)} - ${(h.hora_fin || '').slice(0,5)})`).join('<br>')
-            : '<span style="color:var(--text-muted);">Sin horarios</span>';
-          const nom = p.nombre_completo || `${p.nombre || 'Especialista'} ${p.apellido || ''}`;
-          const sucursal = p.nombre_sucursal || 'Principal';
+        let html = '';
+        for(let i=0; i<profesionales.length; i++) {
+          const p = profesionales[i];
+          const proId = p.id_profesional || p.id;
+          
+          let listaHorarios = '<span style="color:var(--text-muted);">Sin horarios</span>';
+          if (p.horarios && p.horarios.length > 0) {
+            listaHorarios = p.horarios.map(h => (h.nombre_dia || 'Día') + ' (' + (h.hora_inicio || '').slice(0,5) + ' - ' + (h.hora_fin || '').slice(0,5) + ')').join('<br>');
+          }
 
-          return `
-            <tr>
-              <td><strong>${nom}</strong></td>
-              <td>${p.correo || '-'}</td>
-              <td>${sucursal}</td>
-              <td>${p.especialidad || 'General'}</td>
-              <td>${p.porcentaje_comision || '0.00'}%</td>
-              <td style="font-size:12px; line-height:1.4;">${listaHorarios}</td>
-              <td><span class="badge badge-success">${p.estado_laboral || 'ACTIVO'}</span></td>
-              <td style="text-align: right; display: flex; gap: 6px; justify-content: flex-end;">
-                <button class="btn-create" style="padding: 4px 8px; font-size: 11px; border-radius: 6px; background: #38bdf8; color: #0f141c;" onclick="editarProfesional(${proId})">
-                  ✏️ Editar
-                </button>
-                <button class="btn-logout" style="padding: 4px 8px; font-size: 11px; border-radius: 6px;" onclick="eliminarProfesional(${proId}, '${nom}')">
-                  🗑️ Eliminar
-                </button>
-              </td>
-            </tr>
-          `;
-        }).join('');
+          const nom = p.nombre_completo || (p.nombre ? p.nombre + ' ' + (p.apellido||'') : 'Especialista');
+          const sucursal = p.nombre_sucursal || 'Principal';
+          const especialidad = p.especialidad || 'General';
+          const comision = p.porcentaje_comision || '0.00';
+          const estado = p.estado_laboral || 'ACTIVO';
+          const correo = p.correo || '-';
+
+          html += '<tr>' +
+            '<td><strong>' + nom + '</strong></td>' +
+            '<td>' + correo + '</td>' +
+            '<td>' + sucursal + '</td>' +
+            '<td>' + especialidad + '</td>' +
+            '<td>' + comision + '%</td>' +
+            '<td style="font-size:12px; line-height:1.4;">' + listaHorarios + '</td>' +
+            '<td><span class="badge badge-success">' + estado + '</span></td>' +
+            '<td style="text-align: right; display: flex; gap: 6px; justify-content: flex-end;">' +
+              '<button class="btn-create" style="padding: 4px 8px; font-size: 11px; border-radius: 6px; background: #38bdf8; color: #0f141c;" onclick="editarProfesional(' + proId + ')">✏️ Editar</button>' +
+              '<button class="btn-logout" style="padding: 4px 8px; font-size: 11px; border-radius: 6px;" onclick="eliminarProfesional(' + proId + ')">🗑️ Eliminar</button>' +
+            '</td>' +
+          '</tr>';
+        }
+        tbody.innerHTML = html;
       } catch (err) {
-        tbody.innerHTML = `<tr><td colspan="8" style="color:var(--danger); text-align:center;">Error: ${err.message}</td></tr>`;
+        tbody.innerHTML = '<tr><td colspan="8" style="color:var(--danger); text-align:center;">Error al cargar: ' + err.message + '</td></tr>';
       }
     }
 
-    async function eliminarProfesional(id, nombre) {
-      if (!confirm(`¿Eliminar al profesional "${nombre}" (#${id})?`)) return;
-      try {
-        const res = await fetch(`${API_BASE}/personal/profesionales/${id}/`, { method: 'DELETE', headers: getHeaders() });
-        if (res.status === 204 || res.ok) { 
-            alert(`Eliminado con éxito.`); 
-            await cargarProfesionales(); 
-        } else { 
-            alert('No se pudo eliminar.'); 
-        }
-      } catch (err) { alert('Error: ' + err.message); }
-    }
-
-    // 6. Sincronización Global
     async function cargarTodo() {
       await cargarProfesionales();
 
-      // Locales
+      // Cargar Sucursales
       const resLoc = await fetchSmart(['/catalogos/sucursales/', '/catalogos/locales/', '/catalogos/sucursal/']);
       cacheLocales = resLoc.data || [];
       epLocales = resLoc.workingEndpoint;
@@ -522,31 +505,39 @@
 
       const localesBody = document.getElementById('locales-body');
       if(localesBody) {
-          localesBody.innerHTML = cacheLocales.length ? cacheLocales.map(l => {
-            const estado = (l.activo === true || l.estado === true);
-            return `
-              <tr>
-                <td><strong>${l.nombre || l.nombre_comercial}</strong></td>
-                <td>${l.rut_empresa || l.rut || '-'}</td>
-                <td>${l.telefono || '-'}</td>
-                <td>${l.direccion || '-'}</td>
-                <td><span class="badge ${estado ? 'badge-success' : 'badge-danger'}">${estado ? 'Activo' : 'Inactivo'}</span></td>
-              </tr>
-            `;
-          }).join('') : '<tr><td colspan="5" style="text-align:center; color:var(--text-muted);">Sin sucursales.</td></tr>';
+          if(cacheLocales.length === 0) {
+              localesBody.innerHTML = '<tr><td colspan="5" style="text-align:center; color:var(--text-muted);">Sin sucursales.</td></tr>';
+          } else {
+              let htmlLocales = '';
+              for(let i=0; i<cacheLocales.length; i++) {
+                  const l = cacheLocales[i];
+                  const estadoStr = (l.activo === true || l.estado === true) ? 'Activo' : 'Inactivo';
+                  const badgeClass = (l.activo === true || l.estado === true) ? 'badge-success' : 'badge-danger';
+                  htmlLocales += '<tr>' +
+                    '<td><strong>' + (l.nombre || l.nombre_comercial) + '</strong></td>' +
+                    '<td>' + (l.rut_empresa || l.rut || '-') + '</td>' +
+                    '<td>' + (l.telefono || '-') + '</td>' +
+                    '<td>' + (l.direccion || '-') + '</td>' +
+                    '<td><span class="badge ' + badgeClass + '">' + estadoStr + '</span></td>' +
+                  '</tr>';
+              }
+              localesBody.innerHTML = htmlLocales;
+          }
       }
 
-      const optsLoc = cacheLocales.map(l => {
-        const pk = l.id_sucursal ?? l.id_local ?? l.id ?? l.pk;
-        return `<option value="${pk}">${l.nombre || l.nombre_comercial}</option>`;
-      }).join('');
+      let optsLoc = '';
+      for(let i=0; i<cacheLocales.length; i++) {
+          const l = cacheLocales[i];
+          const pk = l.id_sucursal || l.id_local || l.id || l.pk;
+          optsLoc += '<option value="' + pk + '">' + (l.nombre || l.nombre_comercial) + '</option>';
+      }
 
       const srvLocal = document.getElementById('srv-local');
       const proLocal = document.getElementById('pro-local');
       if (srvLocal) srvLocal.innerHTML = optsLoc;
       if (proLocal) proLocal.innerHTML = optsLoc;
 
-      // Servicios
+      // Cargar Servicios
       try {
         const resSrv = await fetchSmart(['/catalogos/servicios/', '/catalogos/servicio/']);
         const servicios = resSrv.data || [];
@@ -557,34 +548,40 @@
 
         const srvBody = document.getElementById('servicios-body');
         if(srvBody) {
-            srvBody.innerHTML = servicios.length ? servicios.map(s => {
-              const locId = s.id_sucursal_id || s.id_sucursal;
-              const loc = cacheLocales.find(l => (l.id_sucursal ?? l.id_local ?? l.id) === locId);
-              const sId = s.id_servicio ?? s.id;
-              return `
-                <tr>
-                  <td><strong>${s.nombre}</strong></td>
-                  <td>${s.nombre_sucursal || (loc ? (loc.nombre || loc.nombre_comercial) : 'Sucursal')}</td>
-                  <td>$${Number(s.precio ?? s.precio_base ?? 0).toLocaleString('es-CL')}</td>
-                  <td>${s.duracion_minutos ?? s.duracion_min ?? 0} min</td>
-                  <td><span class="badge badge-success">${s.activo !== false ? 'Activo' : 'Inactivo'}</span></td>
-                  <td style="text-align: right; display: flex; gap: 6px; justify-content: flex-end;">
-                    <button class="btn-create" style="padding: 4px 8px; font-size: 11px; border-radius: 6px; background: #38bdf8; color: #0f141c;" onclick="editarServicio(${sId})">
-                      ✏️ Editar
-                    </button>
-                    <button class="btn-logout" style="padding: 4px 8px; font-size: 11px; border-radius: 6px;" onclick="eliminarServicio(${sId}, '${s.nombre}')">
-                      🗑️ Eliminar
-                    </button>
-                  </td>
-                </tr>
-              `;
-            }).join('') : '<tr><td colspan="6" style="text-align:center; color:var(--text-muted);">Sin servicios.</td></tr>';
+            if(servicios.length === 0) {
+                srvBody.innerHTML = '<tr><td colspan="6" style="text-align:center; color:var(--text-muted);">Sin servicios.</td></tr>';
+            } else {
+                let htmlSrv = '';
+                for(let i=0; i<servicios.length; i++) {
+                    const s = servicios[i];
+                    const locId = s.id_sucursal_id || s.id_sucursal;
+                    let nombreSucursal = s.nombre_sucursal;
+                    if(!nombreSucursal) {
+                        const loc = cacheLocales.find(l => (l.id_sucursal || l.id_local || l.id) === locId);
+                        nombreSucursal = loc ? (loc.nombre || loc.nombre_comercial) : 'Sucursal';
+                    }
+                    const sId = s.id_servicio || s.id;
+                    const precio = Number(s.precio || s.precio_base || 0).toLocaleString('es-CL');
+                    const duracion = s.duracion_minutos || s.duracion_min || 0;
+                    
+                    htmlSrv += '<tr>' +
+                      '<td><strong>' + s.nombre + '</strong></td>' +
+                      '<td>' + nombreSucursal + '</td>' +
+                      '<td>$' + precio + '</td>' +
+                      '<td>' + duracion + ' min</td>' +
+                      '<td><span class="badge badge-success">' + (s.activo !== false ? 'Activo' : 'Inactivo') + '</span></td>' +
+                      '<td style="text-align: right; display: flex; gap: 6px; justify-content: flex-end;">' +
+                        '<button class="btn-create" style="padding: 4px 8px; font-size: 11px; border-radius: 6px; background: #38bdf8; color: #0f141c;" onclick="editarServicio(' + sId + ')">✏️️ Editar</button>' +
+                        '<button class="btn-logout" style="padding: 4px 8px; font-size: 11px; border-radius: 6px;" onclick="eliminarServicio(' + sId + ')">🗑️ Eliminar</button>' +
+                      '</td>' +
+                    '</tr>';
+                }
+                srvBody.innerHTML = htmlSrv;
+            }
         }
-      } catch (errSrv) {
-          console.warn(errSrv);
-      }
+      } catch (errSrv) {}
 
-      // Citas
+      // Cargar Citas
       try {
         const resCitas = await fetchSmart(['/citas/', '/reservas/citas/', '/reservas/cita/']);
         const citas = resCitas.data || [];
@@ -593,23 +590,35 @@
         
         const citasBody = document.getElementById('citas-body');
         if (citasBody) {
-          citasBody.innerHTML = citas.length ? citas.map(c => `
-              <tr>
-                <td><strong>#${c.id_cita ?? c.id}</strong></td>
-                <td>${c.cliente_nombre || c.nombre_cliente || 'Cliente'}</td>
-                <td>${c.servicio_nombre || c.nombre_servicio || 'Servicio'}</td>
-                <td>${c.profesional_nombre || c.nombre_profesional || 'Especialista'}</td>
-                <td>${c.fecha_hora_inicio ? c.fecha_hora_inicio.replace('T', ' ').substring(0, 16) : '-'}</td>
-                <td><span class="badge badge-info">${c.estado || 'CONFIRMADA'}</span></td>
-              </tr>
-            `).join('') : '<tr><td colspan="6" style="text-align:center; color:var(--text-muted);">Sin citas.</td></tr>';
+            if(citas.length === 0){
+                citasBody.innerHTML = '<tr><td colspan="6" style="text-align:center; color:var(--text-muted);">Sin citas.</td></tr>';
+            } else {
+                let htmlCitas = '';
+                for(let i=0; i<citas.length; i++) {
+                    const c = citas[i];
+                    const idCita = c.id_cita || c.id;
+                    const cliente = c.cliente_nombre || c.nombre_cliente || 'Cliente';
+                    const servicio = c.servicio_nombre || c.nombre_servicio || 'Servicio';
+                    const profesional = c.profesional_nombre || c.nombre_profesional || 'Especialista';
+                    const fechaStr = c.fecha_hora_inicio ? c.fecha_hora_inicio.replace('T', ' ').substring(0, 16) : '-';
+                    const estado = c.estado || 'CONFIRMADA';
+
+                    htmlCitas += '<tr>' +
+                      '<td><strong>#' + idCita + '</strong></td>' +
+                      '<td>' + cliente + '</td>' +
+                      '<td>' + servicio + '</td>' +
+                      '<td>' + profesional + '</td>' +
+                      '<td>' + fechaStr + '</td>' +
+                      '<td><span class="badge badge-info">' + estado + '</span></td>' +
+                    '</tr>';
+                }
+                citasBody.innerHTML = htmlCitas;
+            }
         }
-      } catch (errCitas) {
-          console.warn(errCitas);
-      }
+      } catch (errCitas) {}
     }
 
-    // 7. Modales y Guardado
+    // Funciones Profesionales
     function abrirModalNuevoProfesional() {
         profesionalEditandoId = null;
         document.getElementById('form-profesional').reset();
@@ -622,16 +631,27 @@
     }
 
     function editarProfesional(id) {
-        const pro = listaProfesionalesAdmin.find(p => (p.id_profesional ?? p.id) === id);
+        let pro = null;
+        for(let i=0; i<listaProfesionalesAdmin.length; i++){
+            if((listaProfesionalesAdmin[i].id_profesional || listaProfesionalesAdmin[i].id) === id) {
+                pro = listaProfesionalesAdmin[i]; break;
+            }
+        }
         if (!pro) return;
         profesionalEditandoId = id;
-        document.getElementById('pro-nombre').value = pro.nombre || pro.usuario?.nombre || '';
-        document.getElementById('pro-apellido').value = pro.apellido || pro.usuario?.apellido || '';
-        document.getElementById('pro-correo').value = pro.correo || pro.usuario?.correo || '';
-        document.getElementById('pro-telefono').value = pro.telefono || pro.usuario?.telefono || '';
+        
+        document.getElementById('pro-nombre').value = pro.nombre || (pro.usuario ? pro.usuario.nombre : '');
+        document.getElementById('pro-apellido').value = pro.apellido || (pro.usuario ? pro.usuario.apellido : '');
+        document.getElementById('pro-correo').value = pro.correo || (pro.usuario ? pro.usuario.correo : '');
+        document.getElementById('pro-telefono').value = pro.telefono || (pro.usuario ? pro.usuario.telefono : '');
         document.getElementById('pro-especialidad').value = pro.especialidad || '';
         document.getElementById('pro-comision').value = pro.porcentaje_comision || '0.00';
-        document.getElementById('pro-local').value = pro.id_sucursal?.id_sucursal ?? pro.id_sucursal ?? pro.id_sucursal_id || '';
+        
+        let sucId = '';
+        if(pro.id_sucursal) sucId = pro.id_sucursal.id_sucursal || pro.id_sucursal;
+        else if(pro.id_sucursal_id) sucId = pro.id_sucursal_id;
+        document.getElementById('pro-local').value = sucId;
+
         document.getElementById('pro-password').required = false;
         document.getElementById('pro-password').placeholder = "(Dejar en blanco para no cambiar)";
         document.querySelector('#modal-profesional h3').textContent = "Editar Profesional";
@@ -640,10 +660,23 @@
         openModal('modal-profesional');
     }
 
+    async function eliminarProfesional(id) {
+      if (!confirm("¿Eliminar al profesional #" + id + "?")) return;
+      try {
+        const res = await fetch(API_BASE + '/personal/profesionales/' + id + '/', { method: 'DELETE', headers: getHeaders() });
+        if (res.status === 204 || res.ok) { 
+            alert("Eliminado con éxito."); 
+            await cargarTodo(); 
+        } else { 
+            alert('No se pudo eliminar.'); 
+        }
+      } catch (err) { alert('Error: ' + err.message); }
+    }
+
     async function guardarProfesional(e) {
       e.preventDefault();
       const idSucursal = parseInt(document.getElementById('pro-local').value);
-      if (!idSucursal) { alert('Selecciona una sucursal.'); return; }
+      if (!idSucursal || isNaN(idSucursal)) { alert('Selecciona una sucursal.'); return; }
 
       const payload = {
         nombre: document.getElementById('pro-nombre').value.trim(),
@@ -660,13 +693,36 @@
       if (pass) payload.password = pass;
 
       try {
-        const url = profesionalEditandoId ? `${API_BASE}/personal/profesionales/${profesionalEditandoId}/` : `${API_BASE}/personal/profesionales/`;
+        const url = profesionalEditandoId ? API_BASE + '/personal/profesionales/' + profesionalEditandoId + '/' : API_BASE + '/personal/profesionales/';
         const method = profesionalEditandoId ? 'PATCH' : 'POST';
         
         if (!profesionalEditandoId && !pass) { alert("La clave es obligatoria al crear."); return; }
         
-        const res = await fetch(url, { method, headers: getHeaders(), body: JSON.stringify(payload) });
-        if (!res.ok) { alert('Error al guardar.'); return; }
+        const res = await fetch(url, { method: method, headers: getHeaders(), body: JSON.stringify(payload) });
+        const dataPro = await res.json().catch(() => ({}));
+        
+        if (!res.ok) { alert('Error al guardar: ' + JSON.stringify(dataPro)); return; }
+        
+        // Asignación de Horarios (Solo al crear)
+        if (!profesionalEditandoId) {
+            const proId = dataPro.id_profesional || dataPro.id;
+            const hInicio = document.getElementById('pro-hora-inicio').value;
+            const hFin = document.getElementById('pro-hora-fin').value;
+            
+            const checks = document.querySelectorAll('input[name="pro-dias"]:checked');
+            for(let i=0; i<checks.length; i++) {
+                await fetch(API_BASE + '/personal/horarios/', {
+                    method: 'POST',
+                    headers: getHeaders(),
+                    body: JSON.stringify({
+                        id_profesional: proId,
+                        dia_semana: parseInt(checks[i].value),
+                        hora_inicio: (hInicio.length === 5 ? hInicio + ':00' : hInicio),
+                        hora_fin: (hFin.length === 5 ? hFin + ':00' : hFin)
+                    })
+                });
+            }
+        }
         
         closeModal('modal-profesional');
         profesionalEditandoId = null;
@@ -674,6 +730,7 @@
       } catch (err) { alert('Fallo: ' + err.message); }
     }
 
+    // Funciones Servicios
     function abrirModalNuevoServicio() {
         servicioEditandoId = null;
         document.getElementById('form-servicio').reset();
@@ -683,23 +740,26 @@
     }
 
     function editarServicio(id) {
-        const srv = listaServiciosAdmin.find(s => (s.id_servicio ?? s.id) === id);
+        let srv = null;
+        for(let i=0; i<listaServiciosAdmin.length; i++){
+            if((listaServiciosAdmin[i].id_servicio || listaServiciosAdmin[i].id) === id) { srv = listaServiciosAdmin[i]; break; }
+        }
         if (!srv) return;
         servicioEditandoId = id;
         document.getElementById('srv-nombre').value = srv.nombre || '';
         document.getElementById('srv-desc').value = srv.descripcion || '';
-        document.getElementById('srv-precio').value = srv.precio ?? srv.precio_base ?? 0;
-        document.getElementById('srv-duracion').value = srv.duracion_minutos ?? srv.duracion_min ?? 0;
-        document.getElementById('srv-local').value = srv.id_sucursal_id ?? srv.id_sucursal ?? '';
+        document.getElementById('srv-precio').value = srv.precio || srv.precio_base || 0;
+        document.getElementById('srv-duracion').value = srv.duracion_minutos || srv.duracion_min || 0;
+        document.getElementById('srv-local').value = srv.id_sucursal_id || srv.id_sucursal || '';
         document.querySelector('#modal-servicio h3').textContent = "Editar Servicio";
         document.querySelector('#form-servicio .btn-create').textContent = "Guardar Cambios";
         openModal('modal-servicio');
     }
 
-    async function eliminarServicio(id, nombre) {
-        if (!confirm(`¿Eliminar el servicio "${nombre}"?`)) return;
+    async function eliminarServicio(id) {
+        if (!confirm("¿Eliminar el servicio #" + id + "?")) return;
         try {
-            const res = await fetch(`${API_BASE}/catalogos/servicios/${id}/`, { method: 'DELETE', headers: getHeaders() });
+            const res = await fetch(API_BASE + '/catalogos/servicios/' + id + '/', { method: 'DELETE', headers: getHeaders() });
             if (res.ok || res.status === 204) { alert('Eliminado.'); await cargarTodo(); }
             else { alert('No se pudo eliminar.'); }
         } catch (e) { alert('Error: ' + e.message); }
@@ -708,7 +768,7 @@
     async function guardarServicio(e) {
       e.preventDefault();
       const idSucursal = parseInt(document.getElementById('srv-local').value);
-      if (!idSucursal) { alert('Selecciona una sucursal.'); return; }
+      if (!idSucursal || isNaN(idSucursal)) { alert('Selecciona una sucursal.'); return; }
 
       const payload = {
         id_sucursal: idSucursal,
@@ -720,17 +780,18 @@
       };
 
       try {
-        const url = servicioEditandoId ? `${API_BASE}/catalogos/servicios/${servicioEditandoId}/` : `${API_BASE}/catalogos/servicios/`;
+        const url = servicioEditandoId ? API_BASE + '/catalogos/servicios/' + servicioEditandoId + '/' : API_BASE + '/catalogos/servicios/';
         const method = servicioEditandoId ? 'PATCH' : 'POST';
-        const res = await fetch(url, { method, headers: getHeaders(), body: JSON.stringify(payload) });
+        const res = await fetch(url, { method: method, headers: getHeaders(), body: JSON.stringify(payload) });
         if (res.ok) {
           closeModal('modal-servicio');
           servicioEditandoId = null;
           await cargarTodo();
-        } else { alert('Error del backend.'); }
+        } else { alert('Error del backend al guardar servicio.'); }
       } catch (err) { alert('Fallo de conexión.'); }
     }
 
+    // Funciones Locales
     async function guardarLocal(e) {
       e.preventDefault();
       const payload = {
@@ -742,7 +803,7 @@
         activo: true
       };
       try {
-        const res = await fetch(`${API_BASE}${epLocales}`, { method: 'POST', headers: getHeaders(), body: JSON.stringify(payload) });
+        const res = await fetch(API_BASE + epLocales, { method: 'POST', headers: getHeaders(), body: JSON.stringify(payload) });
         if (res.ok) { closeModal('modal-local'); await cargarTodo(); }
       } catch (err) {}
     }
@@ -753,10 +814,34 @@
       btn.innerHTML = '✅ Listo'; setTimeout(() => { btn.innerHTML = txt; btn.disabled = false; }, 1000);
     }
 
-    function logout() { localStorage.clear(); window.location.href = 'login_roles.html'; }
+    // Inicialización Estricta
+    document.addEventListener("DOMContentLoaded", function() {
+        let session = {};
+        let esAdmin = false;
+        
+        try {
+            const rawSession = localStorage.getItem('usuario') || localStorage.getItem('agendapp_user');
+            if (rawSession && rawSession !== 'undefined' && rawSession !== 'null') {
+                session = JSON.parse(rawSession);
+                esAdmin = session.rol === 'ADMIN' || session.id_rol === 1;
+            }
+        } catch (error) {
+            localStorage.clear();
+        }
 
-    // Iniciar
-    cargarTodo();
+        if (!esAdmin) {
+          alert('Acceso restringido: requiere perfil de Administrador.');
+          window.location.href = 'login_roles.html';
+          return;
+        }
+
+        const adminInfoElem = document.getElementById('adminInfo');
+        if (adminInfoElem) {
+            adminInfoElem.innerHTML = 'Sesión: <strong>' + (session.nombre || session.correo || 'Admin') + '</strong>';
+        }
+
+        cargarTodo();
+    });
   </script>
 </body>
 </html>
