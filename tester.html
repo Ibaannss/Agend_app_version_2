@@ -369,7 +369,8 @@
       tbody.innerHTML = '<tr><td colspan="7" class="empty-state">Actualizando...</td></tr>';
 
       try {
-        const res = await fetch(`${API_BASE}/reservas/citas/`);
+        const clienteId = usuarioActivo.id_usuario || usuarioActivo.id;
+        const res = await fetch(`${API_BASE}/reservas/citas/?cliente=${clienteId}`);
         const json = await res.json();
         const data = Array.isArray(json) ? json : (json.results || []);
 
