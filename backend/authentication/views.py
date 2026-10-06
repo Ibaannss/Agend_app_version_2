@@ -119,13 +119,14 @@ class LoginView(APIView):
                 usuario_data["especialidad"] = "General"
 
         # GENERAR EL TOKEN JWT AQUÍ
-        refresh = RefreshToken.for_user(usuario)
+        refresh = RefreshToken()
+        refresh['user_id'] = user_pk
         access_token = str(refresh.access_token)
 
         return Response({
             "mensaje": "Inicio de sesión exitoso",
             "usuario": usuario_data,
-            "access": access_token  # <-- 4. AHORA SÍ ENVIAMOS EL TOKEN A REACT NATIVE
+            "access": access_token  # ENVIAMOS EL TOKEN A REACT NATIVE
         }, status=status.HTTP_200_OK)
             
             
