@@ -390,7 +390,6 @@
           if (c.estado !== 'CANCELADA' && c.estado !== 'COMPLETADA') {
             btnAcciones = `
               <div style="display: flex; gap: 6px; justify-content: flex-end;">
-                <button class="btn btn-warning btn-sm" onclick="completarCita(${c.id_cita ?? c.id})">Atender</button>
                 <button class="btn btn-danger btn-sm" onclick="cancelarCita(${c.id_cita ?? c.id})">Cancelar</button>
               </div>
             `;
