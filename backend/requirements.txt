@@ -4,13 +4,10 @@ django-cors-headers>=4.3.1
 psycopg[binary]>=3.1.18
 python-dotenv>=1.0.1
 djangorestframework-simplejwt>=5.3.1
-<<<<<<< HEAD
 drf-spectacular>=0.27.0
 gunicorn>=20.1.0
 whitenoise
-=======
 drf-spectacular
 gunicorn
 whitenoise
 dj-database-url
->>>>>>> 0dbca480dc66600e4d1cf80ee623f66109dbe67b
